@@ -69,6 +69,12 @@ class GenerateSchemaResponse(BaseModel):
     error_message: str | None = None
 
 
+class CreateInstanceResponse(BaseModel):
+    status: Literal["ok", "error"]
+    instance_id: str | None = None
+    error_message: str | None = None
+
+
 # ---------------------------------------------------------------------------
 # Internal request / response models
 # ---------------------------------------------------------------------------
@@ -104,11 +110,6 @@ class _CreateInstanceYMLRequest(BaseModel):
 
 class _CreateInstanceJSONRequest(BaseModel):
     json_schema: str | dict[str, Any] | None = None
-
-
-class _CreateInstanceResponse(BaseModel):
-    status: Literal["ok", "error"]
-    instance_id: str | None = None
 
 
 class _UpdateInstanceYMLRequest(BaseModel):
@@ -275,7 +276,7 @@ class _XmemoryClient:
             timeout=timeout,
         )
 
-    def create_instance(self, schema_text: str, schema_type: SchemaType, *, timeout: int | None = None) -> bool:
+    def create_instance(self, schema_text: str, schema_type: SchemaType, *, timeout: int | None = None) -> CreateInstanceResponse:
         if schema_type == SchemaType.YML:
             req_model: BaseModel = _CreateInstanceYMLRequest(yml_schema=schema_text)
         elif schema_type == SchemaType.JSON:
@@ -285,13 +286,13 @@ class _XmemoryClient:
         response = self._post(
             "/api/instance/create",
             req_model,
-            _CreateInstanceResponse,
+            CreateInstanceResponse,
             op_name="Create instance",
             timeout=timeout,
         )
         if response.status == "ok" and response.instance_id:
             self.instance_id = response.instance_id
-        return response.status == "ok"
+        return response
 
     def update_schema(self, schema_text: str, schema_type: SchemaType, *, timeout: int | None = None) -> bool:
         iid = self._require_instance_id("update schema")
@@ -348,7 +349,7 @@ class XmemoryAPI:
             schema_description=schema_description, old_schema_yml=old_schema_yml, timeout=timeout
         )
 
-    def create_instance(self, schema_text: str, schema_type: SchemaType, *, timeout: int | None = None) -> bool:
+    def create_instance(self, schema_text: str, schema_type: SchemaType, *, timeout: int | None = None) -> CreateInstanceResponse:
         return self._client.create_instance(schema_text=schema_text, schema_type=schema_type, timeout=timeout)
 
     def update_schema(self, schema_text: str, schema_type: SchemaType, *, timeout: int | None = None) -> bool:
