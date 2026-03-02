@@ -1,11 +1,11 @@
-# xmemory-sdk
+# xmemory
 
 Python client library for the [Xmemory](https://xmemory.ai) API.
 
 ## Quick start
 
 ```python
-from xmemory_sdk import xmemory_instance
+from xmemory import xmemory_instance
 
 mem = xmemory_instance(
     url="https://api.xmemory.ai",   # or set XMEM_API_URL env var
@@ -28,6 +28,20 @@ print(result.reader_result)
 | `timeout`     | —                 | `60`                       | Default request timeout in seconds |
 
 ## Methods
+
+### `check_health() → None`
+
+Verify that the Xmemory API is reachable. Raises `XmemoryHealthCheckError` on failure.
+Unlike the constructor, this method performs the actual connectivity check, so you can
+call it whenever you need to confirm the service is alive.
+
+```python
+try:
+    mem.check_health()
+    print("API is up")
+except XmemoryHealthCheckError as e:
+    print(f"API is unreachable: {e}")
+```
 
 ### `generate_schema(schema_description, *, old_schema_yml=None, timeout=None) → GenerateSchemaResponse`
 
@@ -74,7 +88,7 @@ print(resp.objects_extracted)
 ```
 
 ```python
-from xmemory_sdk import SchemaType
+from xmemory import SchemaType
 
 ok = mem.create_instance(schema_yml, SchemaType.YML)
 ok = mem.create_instance(schema_json, SchemaType.JSON)
@@ -91,16 +105,20 @@ ok = mem.update_schema(new_schema_yml, SchemaType.YML)
 ## Error handling
 
 All errors raise `XmemoryAPIError` (or its subclass `XmemoryHealthCheckError`
-for connectivity failures on startup).
+for connectivity failures).
 
 ```python
-from xmemory_sdk import XmemoryAPIError, XmemoryHealthCheckError
+from xmemory import XmemoryAPIError, XmemoryHealthCheckError, xmemory_instance
+
+mem = xmemory_instance(url="http://localhost:8000", instance_id="abc")
 
 try:
-    mem = xmemory_instance(url="http://localhost:8000", instance_id="abc")
-    resp = mem.read("something")
+    mem.check_health()
 except XmemoryHealthCheckError as e:
     print(f"Could not reach the API: {e}")
+
+try:
+    resp = mem.read("something")
 except XmemoryAPIError as e:
     print(f"API error (HTTP {e.status}): {e}")
 ```
