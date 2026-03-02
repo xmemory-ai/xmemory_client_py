@@ -146,7 +146,6 @@ class _XmemoryClient:
         self.timeout = timeout
         self.instance_id: str | None = instance_id
         self.token: str | None = token or os.environ.get("XMEM_AUTH_TOKEN")
-        self._check_healthz()
 
     def _auth_headers(self) -> dict[str, str]:
         if self.token:
@@ -155,29 +154,6 @@ class _XmemoryClient:
 
     def _healthz_url(self) -> str:
         return f"{self.base_url}/api/healthz"
-
-    def _check_healthz(self) -> None:
-        req = urllib.request.Request(self._healthz_url(), headers={"Accept": "application/json"})
-        try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-                if not (200 <= resp.status < 300):
-                    raise XmemoryHealthCheckError(
-                        f"Health check failed with status {resp.status} at {self._healthz_url()}",
-                        status=resp.status,
-                    )
-        except urllib.error.HTTPError as e:
-            raise XmemoryHealthCheckError(
-                f"Health check HTTP error {e.code} at {self._healthz_url()}: {e.reason}",
-                status=e.code,
-            ) from e
-        except urllib.error.URLError as e:
-            raise XmemoryHealthCheckError(
-                f"Health check connection error at {self._healthz_url()}: {e.reason}",
-            ) from e
-        except Exception as e:
-            raise XmemoryHealthCheckError(
-                f"Health check failed due to unexpected error at {self._healthz_url()}: {e}",
-            ) from e
 
     def _post(
         self,
@@ -232,6 +208,29 @@ class _XmemoryClient:
         if not self.instance_id:
             raise XmemoryAPIError(f"instance_id is required for {op}() but none was provided or saved.")
         return self.instance_id
+
+    def check_health(self) -> None:
+        req = urllib.request.Request(self._healthz_url(), headers={"Accept": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                if not (200 <= resp.status < 300):
+                    raise XmemoryHealthCheckError(
+                        f"Health check failed with status {resp.status} at {self._healthz_url()}",
+                        status=resp.status,
+                    )
+        except urllib.error.HTTPError as e:
+            raise XmemoryHealthCheckError(
+                f"Health check HTTP error {e.code} at {self._healthz_url()}: {e.reason}",
+                status=e.code,
+            ) from e
+        except urllib.error.URLError as e:
+            raise XmemoryHealthCheckError(
+                f"Health check connection error at {self._healthz_url()}: {e.reason}",
+            ) from e
+        except Exception as e:
+            raise XmemoryHealthCheckError(
+                f"Health check failed due to unexpected error at {self._healthz_url()}: {e}",
+            ) from e
 
     def read(self, query: str, *, timeout: int | None = None, read_id: str | None = None) -> ReadResponse:
         iid = self._require_instance_id("read")
@@ -327,6 +326,9 @@ class XmemoryAPI:
         token: str | None = None,
     ) -> None:
         self._client = _XmemoryClient(url=url, timeout=timeout, instance_id=instance_id, token=token)
+
+    def check_health(self) -> None:
+        return self._client.check_health()
 
     def read(self, query: str, *, timeout: int | None = None, read_id: str | None = None) -> ReadResponse:
         return self._client.read(query=query, timeout=timeout, read_id=read_id)
