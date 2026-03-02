@@ -1,5 +1,5 @@
 [project]
-name = "xmemory-sdk"
+name = "xmemory"
 version = "0.1.0"
 description = "Python client library for the Xmemory API"
 readme = "README.md"
@@ -7,6 +7,9 @@ requires-python = ">=3.12"
 license = { text = "Proprietary" }
 dependencies = [
     "pydantic>=2.0",
+    "pyright>=1.1.408",
+    "pytest>=9.0.2",
+    "ruff>=0.15.4",
 ]
 
 [build-system]
@@ -15,4 +18,37 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["xmemory_sdk*"]
+include = ["xmemory*"]
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+ignore = []
+typeCheckingMode = "standard"
+pythonVersion = "3.12"
+reportMissingImports = true
+reportMissingTypeStubs = false
+reportImportCycles = true
+reportImplicitOverride = "error"
+
+[tool.pytest.ini_options]
+addopts=[
+    "-v",
+]
+asyncio_mode = "auto"
+asyncio_default_test_loop_scope = "session"
+cache_dir = ".pytest_cache"
+markers=[
+    "slow: slow integration tests"
+]
+
+[tool.ruff]
+line-length = 120
+indent-width = 4
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+docstring-code-line-length = "dynamic"

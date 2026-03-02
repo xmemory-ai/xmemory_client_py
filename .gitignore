@@ -1,7 +1,7 @@
 # Project settings
 .idea/
 .adk/
-xmemory_sdk.egg-info/
+xmemory.egg-info/
 .DS_Store
 
 # Byte-compiled / optimized / DLL files
