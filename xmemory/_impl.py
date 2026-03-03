@@ -340,12 +340,12 @@ class XmemoryAPI:
         return self._client.read(query=query, timeout=timeout)
 
     def write(self, text: str, *, extraction_logic: ExtractionLogic = ExtractionLogic.DEEP, timeout: int | None = None) -> WriteResponse:
-        return self._client.write(text=text, timeout=timeout, extraction_logic=extraction_logic)
+        return self._client.write(text=text, extraction_logic=extraction_logic, timeout=timeout)
 
     def extract(
         self, text: str, *, extraction_logic: ExtractionLogic = ExtractionLogic.DEEP, timeout: int | None = None
     ) -> ExtractionResponse:
-        return self._client.extract(text=text, timeout=timeout, extraction_logic=extraction_logic)
+        return self._client.extract(text=text, extraction_logic=extraction_logic, timeout=timeout)
 
     def generate_schema(
         self, schema_description: str, *, old_schema_yml: str | None = None, timeout: int | None = None
