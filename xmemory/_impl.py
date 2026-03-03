@@ -154,7 +154,7 @@ class _XmemoryClient:
         return {}
 
     def _healthz_url(self) -> str:
-        return f"{self.base_url}/api/healthz"
+        return f"{self.base_url}/healthz"
 
     def _post(
         self,
@@ -236,7 +236,7 @@ class _XmemoryClient:
     def read(self, query: str, *, timeout: int | None = None, read_id: str | None = None) -> ReadResponse:
         iid = self._require_instance_id("read")
         return self._post(
-            "/api/read",
+            "/read",
             _ReadRequest(instance_id=iid, query=query, read_id=read_id),
             ReadResponse,
             op_name="Read",
@@ -246,7 +246,7 @@ class _XmemoryClient:
     def write(self, text: str, *, timeout: int | None = None, extract_write_id: str | None = None) -> WriteResponse:
         iid = self._require_instance_id("write")
         return self._post(
-            "/api/write",
+            "/write",
             _WriteRequest(instance_id=iid, text=text, extract_write_id=extract_write_id),
             WriteResponse,
             op_name="Write",
@@ -258,7 +258,7 @@ class _XmemoryClient:
     ) -> ExtractionResponse:
         iid = self._require_instance_id("extract")
         return self._post(
-            "/api/extract",
+            "/extract",
             _ExtractionRequest(instance_id=iid, text=text, extract_write_id=extract_write_id),
             ExtractionResponse,
             op_name="Extraction",
@@ -269,7 +269,7 @@ class _XmemoryClient:
         self, schema_description: str, *, old_schema_yml: str | None = None, timeout: int | None = None
     ) -> GenerateSchemaResponse:
         return self._post(
-            "/api/instance/generate_schema",
+            "/instance/generate_schema",
             _GenerateSchemaRequest(schema_description=schema_description, current_yml_schema=old_schema_yml),
             GenerateSchemaResponse,
             op_name="Generate Schema",
@@ -284,7 +284,7 @@ class _XmemoryClient:
         else:
             raise XmemoryAPIError("Unknown schema_type")
         response = self._post(
-            "/api/instance/create",
+            "/instance/create",
             req_model,
             CreateInstanceResponse,
             op_name="Create instance",
@@ -303,7 +303,7 @@ class _XmemoryClient:
         else:
             raise XmemoryAPIError("Unknown schema_type")
         response = self._post(
-            "/api/instance/update",
+            "/instance/update",
             req_model,
             _UpdateInstanceResponse,
             op_name="Update instance schema",
