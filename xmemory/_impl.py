@@ -34,6 +34,12 @@ class SchemaType(Enum):
     JSON = 1
 
 
+class ExtractionLogic(str, Enum):
+    FAST = "fast"
+    REGULAR = "regular"
+    DEEP = "deep"
+
+
 # ---------------------------------------------------------------------------
 # Response models (public)
 # Complex nested fields (reader_result, cleaned_objects, etc.) are typed as
@@ -84,19 +90,18 @@ class _ReadRequest(BaseModel):
     instance_id: str
     query: str
     mode: str = "single-answer"
-    read_id: str | None = None
 
 
 class _WriteRequest(BaseModel):
     instance_id: str
     text: str
-    extract_write_id: str | None = None
+    extraction_logic: ExtractionLogic
 
 
 class _ExtractionRequest(BaseModel):
     instance_id: str
     text: str
-    extract_write_id: str | None = None
+    extraction_logic: ExtractionLogic
 
 
 class _GenerateSchemaRequest(BaseModel):
@@ -233,33 +238,33 @@ class _XmemoryClient:
                 f"Health check failed due to unexpected error at {self._healthz_url()}: {e}",
             ) from e
 
-    def read(self, query: str, *, timeout: int | None = None, read_id: str | None = None) -> ReadResponse:
+    def read(self, query: str, *, timeout: int | None = None) -> ReadResponse:
         iid = self._require_instance_id("read")
         return self._post(
             "/read",
-            _ReadRequest(instance_id=iid, query=query, read_id=read_id),
+            _ReadRequest(instance_id=iid, query=query),
             ReadResponse,
             op_name="Read",
             timeout=timeout,
         )
 
-    def write(self, text: str, *, timeout: int | None = None, extract_write_id: str | None = None) -> WriteResponse:
+    def write(self, text: str, *, extraction_logic: ExtractionLogic = ExtractionLogic.DEEP, timeout: int | None = None) -> WriteResponse:
         iid = self._require_instance_id("write")
         return self._post(
             "/write",
-            _WriteRequest(instance_id=iid, text=text, extract_write_id=extract_write_id),
+            _WriteRequest(instance_id=iid, text=text, extraction_logic=extraction_logic),
             WriteResponse,
             op_name="Write",
             timeout=timeout,
         )
 
     def extract(
-        self, text: str, *, timeout: int | None = None, extract_write_id: str | None = None
+        self, text: str, *, extraction_logic: ExtractionLogic = ExtractionLogic.DEEP, timeout: int | None = None
     ) -> ExtractionResponse:
         iid = self._require_instance_id("extract")
         return self._post(
             "/extract",
-            _ExtractionRequest(instance_id=iid, text=text, extract_write_id=extract_write_id),
+            _ExtractionRequest(instance_id=iid, text=text, extraction_logic=extraction_logic),
             ExtractionResponse,
             op_name="Extraction",
             timeout=timeout,
@@ -331,16 +336,16 @@ class XmemoryAPI:
     def check_health(self) -> None:
         return self._client.check_health()
 
-    def read(self, query: str, *, timeout: int | None = None, read_id: str | None = None) -> ReadResponse:
-        return self._client.read(query=query, timeout=timeout, read_id=read_id)
+    def read(self, query: str, *, timeout: int | None = None) -> ReadResponse:
+        return self._client.read(query=query, timeout=timeout)
 
-    def write(self, text: str, *, timeout: int | None = None, extract_write_id: str | None = None) -> WriteResponse:
-        return self._client.write(text=text, timeout=timeout, extract_write_id=extract_write_id)
+    def write(self, text: str, *, extraction_logic: ExtractionLogic = ExtractionLogic.DEEP, timeout: int | None = None) -> WriteResponse:
+        return self._client.write(text=text, timeout=timeout, extraction_logic=extraction_logic)
 
     def extract(
-        self, text: str, *, timeout: int | None = None, extract_write_id: str | None = None
+        self, text: str, *, extraction_logic: ExtractionLogic = ExtractionLogic.DEEP, timeout: int | None = None
     ) -> ExtractionResponse:
-        return self._client.extract(text=text, timeout=timeout, extract_write_id=extract_write_id)
+        return self._client.extract(text=text, timeout=timeout, extraction_logic=extraction_logic)
 
     def generate_schema(
         self, schema_description: str, *, old_schema_yml: str | None = None, timeout: int | None = None
