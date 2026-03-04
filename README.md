@@ -122,3 +122,19 @@ try:
 except XmemoryAPIError as e:
     print(f"API error (HTTP {e.status}): {e}")
 ```
+
+## Packge publishing to pip
+
+```python
+python -m pip install --upgrade build twine
+python -m build
+
+#test with test.pypi.org (separate account and API key required)
+python -m twine upload --repository testpypi dist/*
+
+#publish the real version when ready
+python -m twine upload dist/*
+
+#test the package
+pip install xmemory
+```
