@@ -123,7 +123,7 @@ except XmemoryAPIError as e:
     print(f"API error (HTTP {e.status}): {e}")
 ```
 
-## Packge publishing to pip
+## Package publishing to pip
 
 ```python
 python -m pip install --upgrade build twine
