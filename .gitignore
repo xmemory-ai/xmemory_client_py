@@ -2,6 +2,7 @@
 .idea/
 .adk/
 xmemory.egg-info/
+*.egg-info/
 .DS_Store
 
 # Byte-compiled / optimized / DLL files
@@ -14,6 +15,13 @@ __pycache__/
 
 # Environments
 .venv
+.testpypi-verify/
+.testpypi-verify-312/
+
+# Packaging artifacts
+build/
+dist/
+.uv-cache/
 
 # Visual Studio Code
 #  Visual Studio Code specific template is maintained in a separate VisualStudioCode.gitignore 
