@@ -1,5 +1,5 @@
 [project]
-name = "xmemory"
+name = "xmemory-ai"
 version = "0.1.0"
 description = "Python client library for the Xmemory API"
 readme = "README.md"
@@ -7,9 +7,6 @@ requires-python = ">=3.12"
 license = { text = "Proprietary" }
 dependencies = [
     "pydantic>=2.0",
-    "pyright>=1.1.408",
-    "pytest>=9.0.2",
-    "ruff>=0.15.4",
 ]
 
 [build-system]
