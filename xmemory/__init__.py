@@ -1,4 +1,5 @@
 from xmemory._impl import ExtractionResponse as ExtractionResponse
+from xmemory._impl import ExtractionLogic as ExtractionLogic
 from xmemory._impl import GenerateSchemaResponse as GenerateSchemaResponse
 from xmemory._impl import ReadMode as ReadMode
 from xmemory._impl import ReadResponse as ReadResponse
@@ -18,6 +19,7 @@ __all__ = [
     "XmemoryHealthCheckError",
     "ReadResponse",
     "WriteResponse",
+    "ExtractionLogic",
     "ExtractionResponse",
     "GenerateSchemaResponse",
 ]
