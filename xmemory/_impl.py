@@ -40,6 +40,12 @@ class ExtractionLogic(str, Enum):
     DEEP = "deep"
 
 
+class ReadMode(str, Enum):
+    SINGLE_ANSWER = "single-answer"
+    RAW_TABLES = "raw-tables"
+    XRESPONSE = "xresponse"
+
+
 # ---------------------------------------------------------------------------
 # Response models (public)
 # Complex nested fields (reader_result, cleaned_objects, etc.) are typed as
@@ -89,7 +95,7 @@ class CreateInstanceResponse(BaseModel):
 class _ReadRequest(BaseModel):
     instance_id: str
     query: str
-    mode: str = "single-answer"
+    mode: ReadMode = ReadMode.SINGLE_ANSWER
 
 
 class _WriteRequest(BaseModel):
@@ -238,11 +244,17 @@ class _XmemoryClient:
                 f"Health check failed due to unexpected error at {self._healthz_url()}: {e}",
             ) from e
 
-    def read(self, query: str, *, timeout: int | None = None) -> ReadResponse:
+    def read(
+        self,
+        query: str,
+        *,
+        read_mode: ReadMode = ReadMode.SINGLE_ANSWER,
+        timeout: int | None = None,
+    ) -> ReadResponse:
         iid = self._require_instance_id("read")
         return self._post(
             "/read",
-            _ReadRequest(instance_id=iid, query=query),
+            _ReadRequest(instance_id=iid, query=query, mode=read_mode),
             ReadResponse,
             op_name="Read",
             timeout=timeout,
@@ -336,8 +348,14 @@ class XmemoryAPI:
     def check_health(self) -> None:
         return self._client.check_health()
 
-    def read(self, query: str, *, timeout: int | None = None) -> ReadResponse:
-        return self._client.read(query=query, timeout=timeout)
+    def read(
+        self,
+        query: str,
+        *,
+        read_mode: ReadMode = ReadMode.SINGLE_ANSWER,
+        timeout: int | None = None,
+    ) -> ReadResponse:
+        return self._client.read(query=query, read_mode=read_mode, timeout=timeout)
 
     def write(self, text: str, *, extraction_logic: ExtractionLogic = ExtractionLogic.DEEP, timeout: int | None = None) -> WriteResponse:
         return self._client.write(text=text, extraction_logic=extraction_logic, timeout=timeout)

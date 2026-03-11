@@ -69,12 +69,21 @@ print(resp.status)          # "ok" or "error"
 print(resp.cleaned_objects) # written objects
 ```
 
-### `read(query, *, timeout=None, read_id=None) → ReadResponse`
+### `read(query, *, read_mode=ReadMode.SINGLE_ANSWER, timeout=None) → ReadResponse`
 
 Query the instance and get a natural-language answer.
 
 ```python
 resp = mem.read("Who is on the team?")
+print(resp.reader_result)
+```
+
+You can select the response format with `ReadMode`:
+
+```python
+from xmemory import ReadMode
+
+resp = mem.read("Show people and companies", read_mode=ReadMode.XRESPONSE)
 print(resp.reader_result)
 ```
 
