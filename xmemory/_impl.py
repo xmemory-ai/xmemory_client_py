@@ -2,7 +2,8 @@ import json
 import os
 import urllib.error
 import urllib.request
-from enum import Enum
+from datetime import datetime
+from enum import Enum, StrEnum
 from typing import Any, Literal, TypeVar
 
 from pydantic import BaseModel
@@ -46,6 +47,14 @@ class ReadMode(str, Enum):
     XRESPONSE = "xresponse"
 
 
+class WriteQueueStatus(StrEnum):
+    QUEUED = "queued"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    NOT_FOUND = "not_found"
+
+
 # ---------------------------------------------------------------------------
 # Response models (public)
 # Complex nested fields (reader_result, cleaned_objects, etc.) are typed as
@@ -84,6 +93,21 @@ class GenerateSchemaResponse(BaseModel):
 class CreateInstanceResponse(BaseModel):
     status: Literal["ok", "error"]
     instance_id: str | None = None
+    error_message: str | None = None
+
+
+class AsyncWriteResponse(BaseModel):
+    status: Literal["ok", "error"]
+    write_id: str | None = None
+    error_message: str | None = None
+
+
+class WriteStatusResponse(BaseModel):
+    status: Literal["ok", "error"]
+    write_id: str
+    write_status: WriteQueueStatus
+    error_detail: str | None = None
+    completed_at: datetime | None = None
     error_message: str | None = None
 
 
@@ -135,6 +159,10 @@ class _UpdateInstanceJSONRequest(BaseModel):
 
 class _UpdateInstanceResponse(BaseModel):
     status: Literal["ok", "error"]
+
+
+class _WriteStatusRequest(BaseModel):
+    write_id: str
 
 
 # ---------------------------------------------------------------------------
@@ -270,6 +298,25 @@ class _XmemoryClient:
             timeout=timeout,
         )
 
+    def write_async(self, text: str, *, extraction_logic: ExtractionLogic = ExtractionLogic.DEEP, timeout: int | None = None) -> AsyncWriteResponse:
+        iid = self._require_instance_id("write_async")
+        return self._post(
+            "/write_async",
+            _WriteRequest(instance_id=iid, text=text, extraction_logic=extraction_logic),
+            AsyncWriteResponse,
+            op_name="Write Async",
+            timeout=timeout,
+        )
+
+    def write_status(self, write_id: str, *, timeout: int | None = None) -> WriteStatusResponse:
+        return self._post(
+            "/write_status",
+            _WriteStatusRequest(write_id=write_id),
+            WriteStatusResponse,
+            op_name="Write Status",
+            timeout=timeout,
+        )
+
     def extract(
         self, text: str, *, extraction_logic: ExtractionLogic = ExtractionLogic.DEEP, timeout: int | None = None
     ) -> ExtractionResponse:
@@ -359,6 +406,12 @@ class XmemoryAPI:
 
     def write(self, text: str, *, extraction_logic: ExtractionLogic = ExtractionLogic.DEEP, timeout: int | None = None) -> WriteResponse:
         return self._client.write(text=text, extraction_logic=extraction_logic, timeout=timeout)
+
+    def write_async(self, text: str, *, extraction_logic: ExtractionLogic = ExtractionLogic.DEEP, timeout: int | None = None) -> AsyncWriteResponse:
+        return self._client.write_async(text=text, extraction_logic=extraction_logic, timeout=timeout)
+
+    def write_status(self, write_id: str, *, timeout: int | None = None) -> WriteStatusResponse:
+        return self._client.write_status(write_id=write_id, timeout=timeout)
 
     def extract(
         self, text: str, *, extraction_logic: ExtractionLogic = ExtractionLogic.DEEP, timeout: int | None = None
