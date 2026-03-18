@@ -1,0 +1,69 @@
+name: Publish to PyPI
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Lint
+        run: uv run ruff check
+
+      - name: Type check
+        run: uv run pyright
+
+      - name: Test
+        run: uv run pytest
+
+  publish:
+    needs: test
+    runs-on: ubuntu-latest
+    environment: pypi
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Get version
+        run: |
+          LOCAL_VERSION=$(uv version --short)
+          echo "LOCAL_VERSION=$LOCAL_VERSION" >> "$GITHUB_ENV"
+          echo "Publishing version: $LOCAL_VERSION"
+
+      - name: Check tag does not exist
+        run: |
+          if git ls-remote --tags origin | grep -q "refs/tags/v$LOCAL_VERSION$"; then
+            echo "::error::Tag v$LOCAL_VERSION already exists. This version has already been published."
+            exit 1
+          fi
+
+      - name: Build
+        run: uv build
+
+      - name: Publish
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          attestations: true
+
+      - name: Tag release
+        run: |
+          git tag "v$LOCAL_VERSION"
+          git push origin "v$LOCAL_VERSION"
