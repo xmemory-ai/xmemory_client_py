@@ -1,10 +1,11 @@
-import json
+from __future__ import annotations
+
 import os
-import urllib.error
-import urllib.request
+from datetime import datetime
 from enum import Enum
 from typing import Any, Literal, TypeVar
 
+import httpx
 from pydantic import BaseModel
 
 
@@ -87,6 +88,34 @@ class CreateInstanceResponse(BaseModel):
     error_message: str | None = None
 
 
+class AsyncWriteResponse(BaseModel):
+    status: Literal["ok", "error"]
+    write_id: str | None = None
+    error_message: str | None = None
+
+
+class WriteQueueStatus(str, Enum):
+    QUEUED = "queued"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    NOT_FOUND = "not_found"
+
+
+class WriteStatusResponse(BaseModel):
+    status: Literal["ok", "error"]
+    write_id: str
+    write_status: WriteQueueStatus
+    error_detail: str | None = None
+    completed_at: datetime | None = None
+    error_message: str | None = None
+
+
+class GetSchemaResponse(BaseModel):
+    instance_id: str
+    schema_yaml: str
+
+
 # ---------------------------------------------------------------------------
 # Internal request / response models
 # ---------------------------------------------------------------------------
@@ -137,35 +166,69 @@ class _UpdateInstanceResponse(BaseModel):
     status: Literal["ok", "error"]
 
 
+class _WriteStatusRequest(BaseModel):
+    write_id: str
+
+
 # ---------------------------------------------------------------------------
-# HTTP client (internal)
+# Public API
 # ---------------------------------------------------------------------------
 
 _T = TypeVar("_T", bound=BaseModel)
 
 
-class _XmemoryClient:
+class XmemoryAPI:
+    """Synchronous client for the Xmemory API."""
+
     def __init__(
         self,
         url: str | None = None,
         *,
-        timeout: int = 60,
+        timeout: float = 60,
         instance_id: str | None = None,
         token: str | None = None,
+        http_client: httpx.Client | None = None
     ) -> None:
-        resolved_url = url or os.environ.get("XMEM_API_URL") or "https://api.xmemory.ai"
-        self.base_url = resolved_url.rstrip("/")
+        """Create a synchronous Xmemory client.
+
+        Args:
+            url: Base URL of the Xmemory API. Falls back to the XMEM_API_URL env var,
+                then https://api.xmemory.ai. Cannot be combined with http_client.
+            timeout: Default request timeout in seconds. Ignored when http_client is provided.
+            instance_id: ID of the memory instance to operate on. Can also be set later
+                via client.instance_id or create_instance().
+            token: Bearer token for authentication. Falls back to the XMEM_AUTH_TOKEN env var.
+            http_client: An existing httpx.Client to use. Must have base_url set.
+                The client will not be closed when this instance is closed.
+
+        """
         self.timeout = timeout
         self.instance_id: str | None = instance_id
         self.token: str | None = token or os.environ.get("XMEM_AUTH_TOKEN")
 
+        if http_client is not None:
+            if not isinstance(http_client, httpx.Client):
+                raise XmemoryAPIError("http_client must be an instance of httpx.Client")
+
+            if url is not None:
+                raise XmemoryAPIError("Cannot specify both 'url' and 'http_client' — set base_url on the client directly")
+
+            if not http_client.base_url.host:
+                raise XmemoryAPIError("http_client must have base_url set — or omit it and pass url= instead")
+
+            self.base_url = http_client.base_url
+            self._client = http_client
+            self._owns_client = False
+
+        else:
+            self.base_url = httpx.URL(url or os.environ.get("XMEM_API_URL") or "https://api.xmemory.ai")
+            self._client = httpx.Client(base_url=self.base_url, timeout=timeout)
+            self._owns_client = True
+
     def _auth_headers(self) -> dict[str, str]:
         if self.token:
-            return {"Authorization": f"Bearer {self.token}"}
+            return {"Authorization": "Bearer " + self.token}
         return {}
-
-    def _healthz_url(self) -> str:
-        return f"{self.base_url}/healthz"
 
     def _post(
         self,
@@ -173,213 +236,568 @@ class _XmemoryClient:
         body: BaseModel,
         response_type: type[_T],
         *,
-        op_name: str,
-        timeout: int | None = None,
+        timeout: float | None = None,
     ) -> _T:
-        url = f"{self.base_url}{path}"
-        data = json.dumps(body.model_dump()).encode("utf-8")
-        headers = {"Accept": "application/json", "Content-Type": "application/json", **self._auth_headers()}
-        request = urllib.request.Request(url, data=data, headers=headers, method="POST")
         used_timeout = timeout if timeout is not None else self.timeout
         try:
-            with urllib.request.urlopen(request, timeout=used_timeout) as resp:
-                raw_body = resp.read().decode("utf-8")
-                try:
-                    payload_json = json.loads(raw_body) if raw_body else {}
-                except json.JSONDecodeError as je:
-                    raise XmemoryAPIError("Invalid JSON from server", status=resp.status) from je
-                if isinstance(payload_json, dict) and payload_json.get("status") == "error":
-                    error_msg = payload_json.get("error_message") or payload_json.get("error") or str(payload_json)
-                    raise XmemoryAPIError(f"{op_name} failed: {error_msg}", status=resp.status)
-                try:
-                    return response_type.model_validate(payload_json)
-                except Exception as ve:
-                    raise XmemoryAPIError(
-                        f"Response does not match expected schema: {ve}\nPayload: {payload_json}",
-                        status=resp.status,
-                    ) from ve
+            resp = self._client.post(path, json=body.model_dump(), headers=self._auth_headers(), timeout=used_timeout)
+            resp.raise_for_status()
+            payload_json = resp.json() if resp.text else {}
+            if isinstance(payload_json, dict) and payload_json.get("status") == "error":
+                error_msg = payload_json.get("error_message") or payload_json.get("error") or str(payload_json)
+                raise XmemoryAPIError(path + " failed: " + error_msg, status=resp.status_code)
+            try:
+                return response_type.model_validate(payload_json)
+            except Exception as ve:
+                raise XmemoryAPIError(
+                    "Response does not match expected schema: " + str(ve) + "\nPayload: " + str(payload_json),
+                    status=resp.status_code,
+                ) from ve
         except XmemoryAPIError:
             raise
-        except urllib.error.HTTPError as e:
-            detail = None
-            try:
-                raw = e.read().decode("utf-8")
-                detail = raw.strip()
-            except Exception:
-                detail = None
-            msg = f"HTTP {e.code}: {e.reason}"
+        except httpx.HTTPStatusError as e:
+            msg = "HTTP " + str(e.response.status_code)
+            detail = e.response.text.strip() if e.response.text else None
             if detail:
-                msg = f"{msg} — {detail}"
-            raise XmemoryAPIError(msg, status=e.code) from e
-        except urllib.error.URLError as e:
-            raise XmemoryAPIError(f"Connection error: {e.reason}") from e
+                msg = msg + " — " + detail
+            raise XmemoryAPIError(msg, status=e.response.status_code) from e
+        except httpx.ConnectError as e:
+            raise XmemoryAPIError("Connection error: " + str(e)) from e
         except Exception as e:
-            raise XmemoryAPIError(f"Unexpected error: {e}") from e
+            raise XmemoryAPIError("Unexpected error: " + str(e)) from e
+
+    def _get(
+        self,
+        path: str,
+        response_type: type[_T],
+        *,
+        params: dict[str, str] | None = None,
+        timeout: float | None = None,
+    ) -> _T:
+        used_timeout = timeout if timeout is not None else self.timeout
+        try:
+            resp = self._client.get(path, params=params, headers=self._auth_headers(), timeout=used_timeout)
+            resp.raise_for_status()
+            payload_json = resp.json() if resp.text else {}
+            try:
+                return response_type.model_validate(payload_json)
+            except Exception as ve:
+                raise XmemoryAPIError(
+                    "Response does not match expected schema: " + str(ve) + "\nPayload: " + str(payload_json),
+                    status=resp.status_code,
+                ) from ve
+        except XmemoryAPIError:
+            raise
+        except httpx.HTTPStatusError as e:
+            msg = "HTTP " + str(e.response.status_code)
+            detail = e.response.text.strip() if e.response.text else None
+            if detail:
+                msg = msg + " — " + detail
+            raise XmemoryAPIError(msg, status=e.response.status_code) from e
+        except httpx.ConnectError as e:
+            raise XmemoryAPIError("Connection error: " + str(e)) from e
+        except Exception as e:
+            raise XmemoryAPIError("Unexpected error: " + str(e)) from e
 
     def _require_instance_id(self, op: str) -> str:
         if not self.instance_id:
-            raise XmemoryAPIError(f"instance_id is required for {op}() but none was provided or saved.")
+            raise XmemoryAPIError(f"instance_id is required for {op}() — pass it to the constructor or set client.instance_id directly.")
         return self.instance_id
 
     def check_health(self) -> None:
-        req = urllib.request.Request(self._healthz_url(), headers={"Accept": "application/json"})
+        """Verify the API server is reachable. Raises XmemoryHealthCheckError on failure."""
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-                if not (200 <= resp.status < 300):
-                    raise XmemoryHealthCheckError(
-                        f"Health check failed with status {resp.status} at {self._healthz_url()}",
-                        status=resp.status,
-                    )
-        except urllib.error.HTTPError as e:
+            resp = self._client.get("/healthz", timeout=self.timeout)
+            resp.raise_for_status()
+        except httpx.HTTPStatusError as e:
             raise XmemoryHealthCheckError(
-                f"Health check HTTP error {e.code} at {self._healthz_url()}: {e.reason}",
-                status=e.code,
+                "Health check HTTP error " + str(e.response.status_code),
+                status=e.response.status_code,
             ) from e
-        except urllib.error.URLError as e:
-            raise XmemoryHealthCheckError(
-                f"Health check connection error at {self._healthz_url()}: {e.reason}",
-            ) from e
+        except httpx.ConnectError as e:
+            raise XmemoryHealthCheckError("Health check connection error: " + str(e)) from e
         except Exception as e:
-            raise XmemoryHealthCheckError(
-                f"Health check failed due to unexpected error at {self._healthz_url()}: {e}",
-            ) from e
+            raise XmemoryHealthCheckError("Health check failed: " + str(e)) from e
 
     def read(
         self,
         query: str,
         *,
         read_mode: ReadMode = ReadMode.SINGLE_ANSWER,
-        timeout: int | None = None,
+        timeout: float | None = None,
     ) -> ReadResponse:
+        """Query the active instance and return a structured answer.
+
+        Args:
+            query: Natural language question to ask the instance.
+            read_mode: Controls the format of the response.
+            timeout: Request timeout in seconds. Overrides the client default.
+        """
         iid = self._require_instance_id("read")
         return self._post(
             "/read",
             _ReadRequest(instance_id=iid, query=query, mode=read_mode),
             ReadResponse,
-            op_name="Read",
             timeout=timeout,
         )
 
-    def write(self, text: str, *, extraction_logic: ExtractionLogic = ExtractionLogic.DEEP, timeout: int | None = None) -> WriteResponse:
+    def write(self, text: str, *, extraction_logic: ExtractionLogic = ExtractionLogic.DEEP, timeout: float | None = None) -> WriteResponse:
+        """Extract structured data from text and persist it to the active instance.
+
+        Args:
+            text: The text to extract structured data from.
+            extraction_logic: Controls the depth and speed of extraction.
+            timeout: Request timeout in seconds. Overrides the client default.
+        """
         iid = self._require_instance_id("write")
         return self._post(
             "/write",
             _WriteRequest(instance_id=iid, text=text, extraction_logic=extraction_logic),
             WriteResponse,
-            op_name="Write",
             timeout=timeout,
         )
 
     def extract(
-        self, text: str, *, extraction_logic: ExtractionLogic = ExtractionLogic.DEEP, timeout: int | None = None
+        self, text: str, *, extraction_logic: ExtractionLogic = ExtractionLogic.DEEP, timeout: float | None = None
     ) -> ExtractionResponse:
+        """Extract structured data from text without persisting it.
+
+        Args:
+            text: The text to extract structured data from.
+            extraction_logic: Controls the depth and speed of extraction.
+            timeout: Request timeout in seconds. Overrides the client default.
+        """
         iid = self._require_instance_id("extract")
         return self._post(
             "/extract",
             _ExtractionRequest(instance_id=iid, text=text, extraction_logic=extraction_logic),
             ExtractionResponse,
-            op_name="Extraction",
             timeout=timeout,
         )
 
     def generate_schema(
-        self, schema_description: str, *, old_schema_yml: str | None = None, timeout: int | None = None
+        self, schema_description: str, *, old_schema_yml: str | None = None, timeout: float | None = None
     ) -> GenerateSchemaResponse:
+        """Generate a YML schema from a natural language description.
+
+        Args:
+            schema_description: Natural language description of the desired schema.
+            old_schema_yml: Existing YML schema to refine instead of generating from scratch.
+            timeout: Request timeout in seconds. Overrides the client default.
+        """
         return self._post(
             "/instance/generate_schema",
             _GenerateSchemaRequest(schema_description=schema_description, current_yml_schema=old_schema_yml),
             GenerateSchemaResponse,
-            op_name="Generate Schema",
             timeout=timeout,
         )
 
-    def create_instance(self, schema_text: str, schema_type: SchemaType, *, timeout: int | None = None) -> CreateInstanceResponse:
+    def create_instance(self, schema_text: str, schema_type: SchemaType, *, timeout: float | None = None) -> CreateInstanceResponse:
+        """Create a new memory instance from a schema. Sets instance_id on success.
+
+        Args:
+            schema_text: The schema definition as a YML or JSON string.
+            schema_type: Whether schema_text is YML or JSON.
+            timeout: Request timeout in seconds. Overrides the client default.
+        """
         if schema_type == SchemaType.YML:
             req_model: BaseModel = _CreateInstanceYMLRequest(yml_schema=schema_text)
-        elif schema_type == SchemaType.JSON:
-            req_model = _CreateInstanceJSONRequest(json_schema=schema_text)
         else:
-            raise XmemoryAPIError("Unknown schema_type")
+            req_model = _CreateInstanceJSONRequest(json_schema=schema_text)
         response = self._post(
             "/instance/create",
             req_model,
             CreateInstanceResponse,
-            op_name="Create instance",
             timeout=timeout,
         )
         if response.status == "ok" and response.instance_id:
             self.instance_id = response.instance_id
         return response
 
-    def update_schema(self, schema_text: str, schema_type: SchemaType, *, timeout: int | None = None) -> bool:
-        iid = self._require_instance_id("update schema")
+    def update_schema(self, schema_text: str, schema_type: SchemaType, *, timeout: float | None = None) -> bool:
+        """Update the schema of the active instance. Returns True on success.
+
+        Args:
+            schema_text: The updated schema definition as a YML or JSON string.
+            schema_type: Whether schema_text is YML or JSON.
+            timeout: Request timeout in seconds. Overrides the client default.
+        """
+        iid = self._require_instance_id("update_schema")
         if schema_type == SchemaType.YML:
             req_model: BaseModel = _UpdateInstanceYMLRequest(instance_id=iid, yml_schema=schema_text)
-        elif schema_type == SchemaType.JSON:
-            req_model = _UpdateInstanceJSONRequest(instance_id=iid, json_schema=schema_text)
         else:
-            raise XmemoryAPIError("Unknown schema_type")
+            req_model = _UpdateInstanceJSONRequest(instance_id=iid, json_schema=schema_text)
         response = self._post(
             "/instance/update",
             req_model,
             _UpdateInstanceResponse,
-            op_name="Update instance schema",
             timeout=timeout,
         )
         return response.status == "ok"
 
+    def get_schema(self, *, timeout: float | None = None) -> GetSchemaResponse:
+        """Fetch the current schema of the active instance.
+
+        Args:
+            timeout: Request timeout in seconds. Overrides the client default.
+        """
+        iid = self._require_instance_id("get_schema")
+        return self._get("/instance/schema", GetSchemaResponse, params={"instance_id": iid}, timeout=timeout)
+
+    def write_async(self, text: str, *, extraction_logic: ExtractionLogic = ExtractionLogic.DEEP, timeout: float | None = None) -> AsyncWriteResponse:
+        """Submit a write job and return immediately with a write_id for polling.
+
+        Args:
+            text: The text to extract structured data from.
+            extraction_logic: Controls the depth and speed of extraction.
+            timeout: Request timeout in seconds. Overrides the client default.
+        """
+        iid = self._require_instance_id("write_async")
+        return self._post(
+            "/write_async",
+            _WriteRequest(instance_id=iid, text=text, extraction_logic=extraction_logic),
+            AsyncWriteResponse,
+            timeout=timeout,
+        )
+
+    def write_status(self, write_id: str, *, timeout: float | None = None) -> WriteStatusResponse:
+        """Poll the status of an async write job.
+
+        Args:
+            write_id: The write_id returned by write_async().
+            timeout: Request timeout in seconds. Overrides the client default.
+        """
+        return self._post("/write_status", _WriteStatusRequest(write_id=write_id), WriteStatusResponse, timeout=timeout)
+
+    def close(self) -> None:
+        """Close the underlying HTTP client. No-op if the client was externally provided."""
+        if self._owns_client:
+            self._client.close()
+
+    def __enter__(self) -> XmemoryAPI:
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        self.close()
+
 
 # ---------------------------------------------------------------------------
-# Public API
+# Async public API
 # ---------------------------------------------------------------------------
 
 
-class XmemoryAPI:
+class AsyncXmemoryAPI:
+    """Asynchronous client for the Xmemory API."""
+
     def __init__(
         self,
         url: str | None = None,
         *,
-        timeout: int = 60,
+        timeout: float = 60,
         instance_id: str | None = None,
         token: str | None = None,
+        http_client: httpx.AsyncClient | None = None,
+
     ) -> None:
-        self._client = _XmemoryClient(url=url, timeout=timeout, instance_id=instance_id, token=token)
+        """Create an asynchronous Xmemory client.
 
-    def check_health(self) -> None:
-        return self._client.check_health()
+        Args:
+            url: Base URL of the Xmemory API. Falls back to the XMEM_API_URL env var,
+                then https://api.xmemory.ai. Cannot be combined with http_client.
+            timeout: Default request timeout in seconds. Ignored when http_client is provided.
+            instance_id: ID of the memory instance to operate on. Can also be set later
+                via client.instance_id or create_instance().
+            token: Bearer token for authentication. Falls back to the XMEM_AUTH_TOKEN env var.
+            http_client: An existing httpx.AsyncClient to use. Must have base_url set.
+                The client will not be closed when this instance is closed.
 
-    def read(
+        """
+        self.timeout = timeout
+        self.instance_id: str | None = instance_id
+        self.token: str | None = token or os.environ.get("XMEM_AUTH_TOKEN")
+
+        if http_client is not None:
+            if not isinstance(http_client, httpx.AsyncClient):
+                raise XmemoryAPIError("http_client must be an instance of httpx.AsyncClient")
+
+            if url is not None:
+                raise XmemoryAPIError("Cannot specify both 'url' and 'http_client' — set base_url on the client directly")
+
+            if not http_client.base_url.host:
+                raise XmemoryAPIError("http_client must have base_url set — or omit it and pass url= instead")
+
+            self.base_url = http_client.base_url
+            self._client = http_client
+            self._owns_client = False
+
+        else:
+            self.base_url = httpx.URL(url or os.environ.get("XMEM_API_URL") or "https://api.xmemory.ai")
+            self._client = httpx.AsyncClient(base_url=self.base_url, timeout=timeout)
+            self._owns_client = True
+
+    def _auth_headers(self) -> dict[str, str]:
+        if self.token:
+            return {"Authorization": "Bearer " + self.token}
+        return {}
+
+    async def _post(
+        self,
+        path: str,
+        body: BaseModel,
+        response_type: type[_T],
+        *,
+        timeout: float | None = None,
+    ) -> _T:
+        used_timeout = timeout if timeout is not None else self.timeout
+        try:
+            resp = await self._client.post(path, json=body.model_dump(), headers=self._auth_headers(), timeout=used_timeout)
+            resp.raise_for_status()
+            payload_json = resp.json() if resp.text else {}
+            if isinstance(payload_json, dict) and payload_json.get("status") == "error":
+                error_msg = payload_json.get("error_message") or payload_json.get("error") or str(payload_json)
+                raise XmemoryAPIError(path + " failed: " + error_msg, status=resp.status_code)
+            try:
+                return response_type.model_validate(payload_json)
+            except Exception as ve:
+                raise XmemoryAPIError(
+                    "Response does not match expected schema: " + str(ve) + "\nPayload: " + str(payload_json),
+                    status=resp.status_code,
+                ) from ve
+        except XmemoryAPIError:
+            raise
+        except httpx.HTTPStatusError as e:
+            msg = "HTTP " + str(e.response.status_code)
+            detail = e.response.text.strip() if e.response.text else None
+            if detail:
+                msg = msg + " — " + detail
+            raise XmemoryAPIError(msg, status=e.response.status_code) from e
+        except httpx.ConnectError as e:
+            raise XmemoryAPIError("Connection error: " + str(e)) from e
+        except Exception as e:
+            raise XmemoryAPIError("Unexpected error: " + str(e)) from e
+
+    async def _get(
+        self,
+        path: str,
+        response_type: type[_T],
+        *,
+        params: dict[str, str] | None = None,
+        timeout: float | None = None,
+    ) -> _T:
+        used_timeout = timeout if timeout is not None else self.timeout
+        try:
+            resp = await self._client.get(path, params=params, headers=self._auth_headers(), timeout=used_timeout)
+            resp.raise_for_status()
+            payload_json = resp.json() if resp.text else {}
+            try:
+                return response_type.model_validate(payload_json)
+            except Exception as ve:
+                raise XmemoryAPIError(
+                    "Response does not match expected schema: " + str(ve) + "\nPayload: " + str(payload_json),
+                    status=resp.status_code,
+                ) from ve
+        except XmemoryAPIError:
+            raise
+        except httpx.HTTPStatusError as e:
+            msg = "HTTP " + str(e.response.status_code)
+            detail = e.response.text.strip() if e.response.text else None
+            if detail:
+                msg = msg + " — " + detail
+            raise XmemoryAPIError(msg, status=e.response.status_code) from e
+        except httpx.ConnectError as e:
+            raise XmemoryAPIError("Connection error: " + str(e)) from e
+        except Exception as e:
+            raise XmemoryAPIError("Unexpected error: " + str(e)) from e
+
+    def _require_instance_id(self, op: str) -> str:
+        if not self.instance_id:
+            raise XmemoryAPIError(f"instance_id is required for {op}() — pass it to the constructor or set client.instance_id directly.")
+        return self.instance_id
+
+    async def check_health(self) -> None:
+        """Verify the API server is reachable. Raises XmemoryHealthCheckError on failure."""
+        try:
+            resp = await self._client.get("/healthz", timeout=self.timeout)
+            resp.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            raise XmemoryHealthCheckError(
+                "Health check HTTP error " + str(e.response.status_code),
+                status=e.response.status_code,
+            ) from e
+        except httpx.ConnectError as e:
+            raise XmemoryHealthCheckError("Health check connection error: " + str(e)) from e
+        except Exception as e:
+            raise XmemoryHealthCheckError("Health check failed: " + str(e)) from e
+
+    async def read(
         self,
         query: str,
         *,
         read_mode: ReadMode = ReadMode.SINGLE_ANSWER,
-        timeout: int | None = None,
+        timeout: float | None = None,
     ) -> ReadResponse:
-        return self._client.read(query=query, read_mode=read_mode, timeout=timeout)
+        """Query the active instance and return a structured answer.
 
-    def write(self, text: str, *, extraction_logic: ExtractionLogic = ExtractionLogic.DEEP, timeout: int | None = None) -> WriteResponse:
-        return self._client.write(text=text, extraction_logic=extraction_logic, timeout=timeout)
-
-    def extract(
-        self, text: str, *, extraction_logic: ExtractionLogic = ExtractionLogic.DEEP, timeout: int | None = None
-    ) -> ExtractionResponse:
-        return self._client.extract(text=text, extraction_logic=extraction_logic, timeout=timeout)
-
-    def generate_schema(
-        self, schema_description: str, *, old_schema_yml: str | None = None, timeout: int | None = None
-    ) -> GenerateSchemaResponse:
-        return self._client.generate_schema(
-            schema_description=schema_description, old_schema_yml=old_schema_yml, timeout=timeout
+        Args:
+            query: Natural language question to ask the instance.
+            read_mode: Controls the format of the response.
+            timeout: Request timeout in seconds. Overrides the client default.
+        """
+        iid = self._require_instance_id("read")
+        return await self._post(
+            "/read",
+            _ReadRequest(instance_id=iid, query=query, mode=read_mode),
+            ReadResponse,
+            timeout=timeout,
         )
 
-    def create_instance(self, schema_text: str, schema_type: SchemaType, *, timeout: int | None = None) -> CreateInstanceResponse:
-        return self._client.create_instance(schema_text=schema_text, schema_type=schema_type, timeout=timeout)
+    async def write(self, text: str, *, extraction_logic: ExtractionLogic = ExtractionLogic.DEEP, timeout: float | None = None) -> WriteResponse:
+        """Extract structured data from text and persist it to the active instance.
 
-    def update_schema(self, schema_text: str, schema_type: SchemaType, *, timeout: int | None = None) -> bool:
-        return self._client.update_schema(schema_text=schema_text, schema_type=schema_type, timeout=timeout)
+        Args:
+            text: The text to extract structured data from.
+            extraction_logic: Controls the depth and speed of extraction.
+            timeout: Request timeout in seconds. Overrides the client default.
+        """
+        iid = self._require_instance_id("write")
+        return await self._post(
+            "/write",
+            _WriteRequest(instance_id=iid, text=text, extraction_logic=extraction_logic),
+            WriteResponse,
+            timeout=timeout,
+        )
+
+    async def extract(
+        self, text: str, *, extraction_logic: ExtractionLogic = ExtractionLogic.DEEP, timeout: float | None = None
+    ) -> ExtractionResponse:
+        """Extract structured data from text without persisting it.
+
+        Args:
+            text: The text to extract structured data from.
+            extraction_logic: Controls the depth and speed of extraction.
+            timeout: Request timeout in seconds. Overrides the client default.
+        """
+        iid = self._require_instance_id("extract")
+        return await self._post(
+            "/extract",
+            _ExtractionRequest(instance_id=iid, text=text, extraction_logic=extraction_logic),
+            ExtractionResponse,
+            timeout=timeout,
+        )
+
+    async def generate_schema(
+        self, schema_description: str, *, old_schema_yml: str | None = None, timeout: float | None = None
+    ) -> GenerateSchemaResponse:
+        """Generate a YML schema from a natural language description.
+
+        Args:
+            schema_description: Natural language description of the desired schema.
+            old_schema_yml: Existing YML schema to refine instead of generating from scratch.
+            timeout: Request timeout in seconds. Overrides the client default.
+        """
+        return await self._post(
+            "/instance/generate_schema",
+            _GenerateSchemaRequest(schema_description=schema_description, current_yml_schema=old_schema_yml),
+            GenerateSchemaResponse,
+            timeout=timeout,
+        )
+
+    async def create_instance(self, schema_text: str, schema_type: SchemaType, *, timeout: float | None = None) -> CreateInstanceResponse:
+        """Create a new memory instance from a schema. Sets instance_id on success.
+
+        Args:
+            schema_text: The schema definition as a YML or JSON string.
+            schema_type: Whether schema_text is YML or JSON.
+            timeout: Request timeout in seconds. Overrides the client default.
+        """
+        if schema_type == SchemaType.YML:
+            req_model: BaseModel = _CreateInstanceYMLRequest(yml_schema=schema_text)
+        else:
+            req_model = _CreateInstanceJSONRequest(json_schema=schema_text)
+        response = await self._post(
+            "/instance/create",
+            req_model,
+            CreateInstanceResponse,
+            timeout=timeout,
+        )
+        if response.status == "ok" and response.instance_id:
+            self.instance_id = response.instance_id
+        return response
+
+    async def update_schema(self, schema_text: str, schema_type: SchemaType, *, timeout: float | None = None) -> bool:
+        """Update the schema of the active instance. Returns True on success.
+
+        Args:
+            schema_text: The updated schema definition as a YML or JSON string.
+            schema_type: Whether schema_text is YML or JSON.
+            timeout: Request timeout in seconds. Overrides the client default.
+        """
+        iid = self._require_instance_id("update_schema")
+        if schema_type == SchemaType.YML:
+            req_model: BaseModel = _UpdateInstanceYMLRequest(instance_id=iid, yml_schema=schema_text)
+        else:
+            req_model = _UpdateInstanceJSONRequest(instance_id=iid, json_schema=schema_text)
+        response = await self._post(
+            "/instance/update",
+            req_model,
+            _UpdateInstanceResponse,
+            timeout=timeout,
+        )
+        return response.status == "ok"
+
+    async def get_schema(self, *, timeout: float | None = None) -> GetSchemaResponse:
+        """Fetch the current schema of the active instance.
+
+        Args:
+            timeout: Request timeout in seconds. Overrides the client default.
+        """
+        iid = self._require_instance_id("get_schema")
+        return await self._get("/instance/schema", GetSchemaResponse, params={"instance_id": iid}, timeout=timeout)
+
+    async def write_async(self, text: str, *, extraction_logic: ExtractionLogic = ExtractionLogic.DEEP, timeout: float | None = None) -> AsyncWriteResponse:
+        """Submit a write job and return immediately with a write_id for polling.
+
+        Args:
+            text: The text to extract structured data from.
+            extraction_logic: Controls the depth and speed of extraction.
+            timeout: Request timeout in seconds. Overrides the client default.
+        """
+        iid = self._require_instance_id("write_async")
+        return await self._post(
+            "/write_async",
+            _WriteRequest(instance_id=iid, text=text, extraction_logic=extraction_logic),
+            AsyncWriteResponse,
+            timeout=timeout,
+        )
+
+    async def write_status(self, write_id: str, *, timeout: float | None = None) -> WriteStatusResponse:
+        """Poll the status of an async write job.
+
+        Args:
+            write_id: The write_id returned by write_async().
+            timeout: Request timeout in seconds. Overrides the client default.
+        """
+        return await self._post("/write_status", _WriteStatusRequest(write_id=write_id), WriteStatusResponse, timeout=timeout)
+
+    async def aclose(self) -> None:
+        """Close the underlying HTTP client. No-op if the client was externally provided."""
+        if self._owns_client:
+            await self._client.aclose()
+
+    async def __aenter__(self) -> AsyncXmemoryAPI:
+        return self
+
+    async def __aexit__(self, *_: object) -> None:
+        await self.aclose()
 
 
 def xmemory_instance(
-    *, url: str | None = None, instance_id: str | None = None, token: str | None = None, timeout: int = 60
+    *, url: str | None = None, instance_id: str | None = None, token: str | None = None, timeout: float = 60
 ) -> XmemoryAPI:
-    return XmemoryAPI(url=url, timeout=timeout, instance_id=instance_id, token=token)
+    return XmemoryAPI(url=url, timeout=timeout, token=token, instance_id=instance_id)
+
+
+def async_xmemory_instance(
+    *, url: str | None = None, instance_id: str | None = None, token: str | None = None, timeout: float = 60
+) -> AsyncXmemoryAPI:
+    return AsyncXmemoryAPI(url=url, timeout=timeout, token=token, instance_id=instance_id)
