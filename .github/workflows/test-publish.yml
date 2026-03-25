@@ -1,10 +1,7 @@
-name: Publish to PyPI
+name: Test Publish
 
 on:
   workflow_dispatch:
-
-permissions:
-  contents: write
 
 jobs:
   test:
@@ -42,31 +39,31 @@ jobs:
 
       - name: Get version
         run: |
-          LOCAL_VERSION=$(uv version --short)
+          PROD_VERSION=$(uv version --short)
+          LOCAL_VERSION="${PROD_VERSION}.dev${{ github.run_number }}"
+          uv version "$LOCAL_VERSION"
+          echo "PROD_VERSION=$PROD_VERSION" >> "$GITHUB_ENV"
           echo "LOCAL_VERSION=$LOCAL_VERSION" >> "$GITHUB_ENV"
           echo "Publishing version: $LOCAL_VERSION"
 
-      - name: Check tag does not exist
+      - name: Check prod tag does not exist
         run: |
-          if git ls-remote --tags origin | grep -q "refs/tags/v$LOCAL_VERSION$"; then
-            echo "::error::Tag v$LOCAL_VERSION already exists. This version has already been published."
+          if git ls-remote --tags origin | grep -q "refs/tags/v$PROD_VERSION$"; then
+            echo "::error::Tag v$PROD_VERSION already exists. This version has already been published to PyPI."
             exit 1
           fi
 
       - name: Build
         run: uv build
 
-      - name: Publish
+      - name: Publish to TestPyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          password: ${{ secrets.PYPI_API_TOKEN }}
-
-      - name: Tag release
-        run: |
-          git tag "v$LOCAL_VERSION"
-          git push origin "v$LOCAL_VERSION"
+          repository-url: https://test.pypi.org/legacy/
+          password: ${{ secrets.TEST_PYPI_API_TOKEN }}
+          skip-existing: true
 
       - name: Print install command
         run: |
           echo "Install with:"
-          echo "pip install xmemory==$LOCAL_VERSION"
+          echo "pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ xmemory==$LOCAL_VERSION"
