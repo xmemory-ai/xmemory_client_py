@@ -41,17 +41,14 @@ jobs:
 
       - name: Get version
         run: |
-          PROD_VERSION=$(uv version --short)
-          LOCAL_VERSION="${PROD_VERSION}.dev${{ github.run_number }}"
-          uv version "$LOCAL_VERSION"
-          echo "PROD_VERSION=$PROD_VERSION" >> "$GITHUB_ENV"
+          LOCAL_VERSION=$(uv version --short)
           echo "LOCAL_VERSION=$LOCAL_VERSION" >> "$GITHUB_ENV"
           echo "Publishing version: $LOCAL_VERSION"
 
       - name: Check prod tag does not exist
         run: |
-          if git ls-remote --tags origin | grep -q "refs/tags/v$PROD_VERSION$"; then
-            echo "::error::Tag v$PROD_VERSION already exists. This version has already been published to PyPI."
+          if git ls-remote --tags origin | grep -q "refs/tags/v$LOCAL_VERSION$"; then
+            echo "::error::Tag v$LOCAL_VERSION already exists. This version has already been published to PyPI."
             exit 1
           fi
 
