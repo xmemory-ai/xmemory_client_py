@@ -30,7 +30,6 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     permissions:
-      id-token: write
       contents: read
     steps:
       - uses: actions/checkout@v4
@@ -63,8 +62,7 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
-          password: ${{ secrets.TEST_PYPI_API_TOKEN }}
-          attestations: false
+          password: ${{ secrets.TESTPYPI_API_TOKEN }}
           skip-existing: true
 
       - name: Print install command
