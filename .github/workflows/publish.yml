@@ -31,7 +31,6 @@ jobs:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     permissions:
-      id-token: write
       contents: write
     steps:
       - uses: actions/checkout@v4
