@@ -1,0 +1,69 @@
+name: Test Publish
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Lint
+        run: uv run ruff check
+
+      - name: Type check
+        run: uv run pyright
+
+      - name: Test
+        run: uv run pytest
+
+  publish:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Get version
+        run: |
+          PROD_VERSION=$(uv version --short)
+          LOCAL_VERSION="${PROD_VERSION}.dev${{ github.run_number }}"
+          uv version "$LOCAL_VERSION"
+          echo "PROD_VERSION=$PROD_VERSION" >> "$GITHUB_ENV"
+          echo "LOCAL_VERSION=$LOCAL_VERSION" >> "$GITHUB_ENV"
+          echo "Publishing version: $LOCAL_VERSION"
+
+      - name: Check prod tag does not exist
+        run: |
+          if git ls-remote --tags origin | grep -q "refs/tags/v$PROD_VERSION$"; then
+            echo "::error::Tag v$PROD_VERSION already exists. This version has already been published to PyPI."
+            exit 1
+          fi
+
+      - name: Build
+        run: uv build
+
+      - name: Publish to TestPyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          password: ${{ secrets.TEST_PYPI_API_TOKEN }}
+          skip-existing: true
+
+      - name: Print install command
+        run: |
+          echo "Install with:"
+          echo "pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ xmemory==$LOCAL_VERSION"
