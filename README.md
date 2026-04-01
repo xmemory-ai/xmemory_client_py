@@ -1,6 +1,6 @@
 # xmemory
 
-Python client library for the [Xmemory](https://xmemory.ai) API.
+Python client library for the [xmemory](https://xmemory.ai) API.
 
 ## Quick start
 
