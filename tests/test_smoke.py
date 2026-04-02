@@ -1,5 +1,7 @@
 """Smoke tests — no live server required."""
 
+import json
+
 import pytest
 import httpx
 
@@ -119,3 +121,50 @@ def test_api_error_carries_status():
 def test_api_error_without_status():
     err = XmemoryAPIError("oops")
     assert err.status is None
+
+
+def test_sync_write_uses_trace_id_and_diff_engine_wire_fields():
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content.decode("utf-8"))
+        assert request.url.path == "/write"
+        assert payload == {
+            "instance_id": "abc",
+            "text": "Bob joined the team.",
+            "extraction_logic": "regular",
+            "use_diff_engine": True,
+        }
+        return httpx.Response(200, json={"status": "ok", "trace_id": "trace-123", "cleaned_objects": []})
+
+    client = XmemoryAPI(
+        instance_id="abc",
+        http_client=httpx.Client(base_url="https://api.xmemory.ai", transport=httpx.MockTransport(handler)),
+    )
+
+    client.write(
+        "Bob joined the team.",
+        extraction_logic=ExtractionLogic.REGULAR,
+        diff_engine=True,
+    )
+
+
+async def test_async_read_maps_read_id_to_trace_id():
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content.decode("utf-8"))
+        assert request.url.path == "/read"
+        assert payload == {
+            "instance_id": "abc",
+            "query": "Who is on the team?",
+            "mode": "single-answer",
+            "read_id": "trace-456",
+        }
+        return httpx.Response(200, json={"status": "ok", "read_id": "trace-456", "reader_result": {"answer": "Bob"}})
+
+    client = AsyncXmemoryAPI(
+        instance_id="abc",
+        http_client=httpx.AsyncClient(base_url="https://api.xmemory.ai", transport=httpx.MockTransport(handler)),
+    )
+
+    response = await client.read("Who is on the team?", trace_id="trace-456")
+
+    assert response.trace_id == "trace-456"
+    await client.aclose()

@@ -6,7 +6,7 @@ from enum import Enum
 from typing import Any, Literal, TypeVar
 
 import httpx
-from pydantic import BaseModel
+from pydantic import AliasChoices, BaseModel, Field
 
 
 # ---------------------------------------------------------------------------
@@ -56,14 +56,14 @@ class ReadMode(str, Enum):
 
 class ReadResponse(BaseModel):
     status: Literal["ok", "error"]
-    read_id: str | None = None
+    trace_id: str | None = Field(default=None, validation_alias=AliasChoices("trace_id", "read_id"))
     reader_result: Any = None
     error_message: str | None = None
 
 
 class WriteResponse(BaseModel):
     status: Literal["ok", "error"]
-    extract_write_id: str | None = None
+    trace_id: str | None = Field(default=None, validation_alias=AliasChoices("trace_id"))
     cleaned_objects: Any = None
     diff_plan: Any = None
     error_message: str | None = None
@@ -71,7 +71,7 @@ class WriteResponse(BaseModel):
 
 class ExtractionResponse(BaseModel):
     status: Literal["ok", "error"]
-    extract_write_id: str | None = None
+    trace_id: str | None = Field(default=None, validation_alias=AliasChoices("trace_id"))
     objects_extracted: Any = None
     error_message: str | None = None
 
@@ -125,12 +125,22 @@ class _ReadRequest(BaseModel):
     instance_id: str
     query: str
     mode: ReadMode = ReadMode.SINGLE_ANSWER
+    trace_id: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("trace_id", "read_id"),
+        serialization_alias="read_id",
+    )
 
 
 class _WriteRequest(BaseModel):
     instance_id: str
     text: str
     extraction_logic: ExtractionLogic
+    diff_engine: bool | None = Field(
+        default=None,
+        validation_alias=AliasChoices("diff_engine", "use_diff_engine"),
+        serialization_alias="use_diff_engine",
+    )
 
 
 class _ExtractionRequest(BaseModel):
@@ -240,7 +250,7 @@ class XmemoryAPI:
     ) -> _T:
         used_timeout = timeout if timeout is not None else self.timeout
         try:
-            resp = self._client.post(path, json=body.model_dump(), headers=self._auth_headers(), timeout=used_timeout)
+            resp = self._client.post(path, json=body.model_dump(by_alias=True), headers=self._auth_headers(), timeout=used_timeout)
             resp.raise_for_status()
             payload_json = resp.json() if resp.text else {}
             if isinstance(payload_json, dict) and payload_json.get("status") == "error":
@@ -341,24 +351,41 @@ class XmemoryAPI:
             timeout=timeout,
         )
 
-    def write(self, text: str, *, extraction_logic: ExtractionLogic = ExtractionLogic.DEEP, timeout: float | None = None) -> WriteResponse:
+    def write(
+        self,
+        text: str,
+        *,
+        extraction_logic: ExtractionLogic = ExtractionLogic.DEEP,
+        diff_engine: bool | None = None,
+        timeout: float | None = None,
+    ) -> WriteResponse:
         """Extract structured data from text and persist it to the active instance.
 
         Args:
             text: The text to extract structured data from.
             extraction_logic: Controls the depth and speed of extraction.
+            diff_engine: Override the server diff engine setting for this request.
             timeout: Request timeout in seconds. Overrides the client default.
         """
         iid = self._require_instance_id("write")
         return self._post(
             "/write",
-            _WriteRequest(instance_id=iid, text=text, extraction_logic=extraction_logic),
+            _WriteRequest(
+                instance_id=iid,
+                text=text,
+                extraction_logic=extraction_logic,
+                diff_engine=diff_engine,
+            ),
             WriteResponse,
             timeout=timeout,
         )
 
     def extract(
-        self, text: str, *, extraction_logic: ExtractionLogic = ExtractionLogic.DEEP, timeout: float | None = None
+        self,
+        text: str,
+        *,
+        extraction_logic: ExtractionLogic = ExtractionLogic.DEEP,
+        timeout: float | None = None,
     ) -> ExtractionResponse:
         """Extract structured data from text without persisting it.
 
@@ -444,18 +471,31 @@ class XmemoryAPI:
         iid = self._require_instance_id("get_schema")
         return self._get("/instance/schema", GetSchemaResponse, params={"instance_id": iid}, timeout=timeout)
 
-    def write_async(self, text: str, *, extraction_logic: ExtractionLogic = ExtractionLogic.DEEP, timeout: float | None = None) -> AsyncWriteResponse:
+    def write_async(
+        self,
+        text: str,
+        *,
+        extraction_logic: ExtractionLogic = ExtractionLogic.DEEP,
+        diff_engine: bool | None = None,
+        timeout: float | None = None,
+    ) -> AsyncWriteResponse:
         """Submit a write job and return immediately with a write_id for polling.
 
         Args:
             text: The text to extract structured data from.
             extraction_logic: Controls the depth and speed of extraction.
+            diff_engine: Override the server diff engine setting for this request.
             timeout: Request timeout in seconds. Overrides the client default.
         """
         iid = self._require_instance_id("write_async")
         return self._post(
             "/write_async",
-            _WriteRequest(instance_id=iid, text=text, extraction_logic=extraction_logic),
+            _WriteRequest(
+                instance_id=iid,
+                text=text,
+                extraction_logic=extraction_logic,
+                diff_engine=diff_engine,
+            ),
             AsyncWriteResponse,
             timeout=timeout,
         )
@@ -550,7 +590,7 @@ class AsyncXmemoryAPI:
     ) -> _T:
         used_timeout = timeout if timeout is not None else self.timeout
         try:
-            resp = await self._client.post(path, json=body.model_dump(), headers=self._auth_headers(), timeout=used_timeout)
+            resp = await self._client.post(path, json=body.model_dump(by_alias=True), headers=self._auth_headers(), timeout=used_timeout)
             resp.raise_for_status()
             payload_json = resp.json() if resp.text else {}
             if isinstance(payload_json, dict) and payload_json.get("status") == "error":
@@ -634,6 +674,7 @@ class AsyncXmemoryAPI:
         query: str,
         *,
         read_mode: ReadMode = ReadMode.SINGLE_ANSWER,
+        trace_id: str | None = None,
         timeout: float | None = None,
     ) -> ReadResponse:
         """Query the active instance and return a structured answer.
@@ -641,34 +682,52 @@ class AsyncXmemoryAPI:
         Args:
             query: Natural language question to ask the instance.
             read_mode: Controls the format of the response.
+            trace_id: Optional request tracing ID echoed back by the API.
             timeout: Request timeout in seconds. Overrides the client default.
         """
         iid = self._require_instance_id("read")
         return await self._post(
             "/read",
-            _ReadRequest(instance_id=iid, query=query, mode=read_mode),
+            _ReadRequest(instance_id=iid, query=query, mode=read_mode, trace_id=trace_id),
             ReadResponse,
             timeout=timeout,
         )
 
-    async def write(self, text: str, *, extraction_logic: ExtractionLogic = ExtractionLogic.DEEP, timeout: float | None = None) -> WriteResponse:
+    async def write(
+        self,
+        text: str,
+        *,
+        extraction_logic: ExtractionLogic = ExtractionLogic.DEEP,
+        diff_engine: bool | None = None,
+        timeout: float | None = None,
+    ) -> WriteResponse:
         """Extract structured data from text and persist it to the active instance.
 
         Args:
             text: The text to extract structured data from.
             extraction_logic: Controls the depth and speed of extraction.
+            diff_engine: Override the server diff engine setting for this request.
             timeout: Request timeout in seconds. Overrides the client default.
         """
         iid = self._require_instance_id("write")
         return await self._post(
             "/write",
-            _WriteRequest(instance_id=iid, text=text, extraction_logic=extraction_logic),
+            _WriteRequest(
+                instance_id=iid,
+                text=text,
+                extraction_logic=extraction_logic,
+                diff_engine=diff_engine,
+            ),
             WriteResponse,
             timeout=timeout,
         )
 
     async def extract(
-        self, text: str, *, extraction_logic: ExtractionLogic = ExtractionLogic.DEEP, timeout: float | None = None
+        self,
+        text: str,
+        *,
+        extraction_logic: ExtractionLogic = ExtractionLogic.DEEP,
+        timeout: float | None = None,
     ) -> ExtractionResponse:
         """Extract structured data from text without persisting it.
 
@@ -754,18 +813,31 @@ class AsyncXmemoryAPI:
         iid = self._require_instance_id("get_schema")
         return await self._get("/instance/schema", GetSchemaResponse, params={"instance_id": iid}, timeout=timeout)
 
-    async def write_async(self, text: str, *, extraction_logic: ExtractionLogic = ExtractionLogic.DEEP, timeout: float | None = None) -> AsyncWriteResponse:
+    async def write_async(
+        self,
+        text: str,
+        *,
+        extraction_logic: ExtractionLogic = ExtractionLogic.DEEP,
+        diff_engine: bool | None = None,
+        timeout: float | None = None,
+    ) -> AsyncWriteResponse:
         """Submit a write job and return immediately with a write_id for polling.
 
         Args:
             text: The text to extract structured data from.
             extraction_logic: Controls the depth and speed of extraction.
+            diff_engine: Override the server diff engine setting for this request.
             timeout: Request timeout in seconds. Overrides the client default.
         """
         iid = self._require_instance_id("write_async")
         return await self._post(
             "/write_async",
-            _WriteRequest(instance_id=iid, text=text, extraction_logic=extraction_logic),
+            _WriteRequest(
+                instance_id=iid,
+                text=text,
+                extraction_logic=extraction_logic,
+                diff_engine=diff_engine,
+            ),
             AsyncWriteResponse,
             timeout=timeout,
         )
