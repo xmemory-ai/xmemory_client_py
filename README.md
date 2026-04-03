@@ -129,6 +129,7 @@ Query the instance and get a structured answer.
 ```python
 resp = mem.read("Who is on the team?")
 print(resp.reader_result)
+print(resp.trace_id)
 ```
 
 Use `read_mode` to control the response format:
@@ -139,7 +140,7 @@ from xmemory import ReadMode
 resp = mem.read("Show people and companies", read_mode=ReadMode.XRESPONSE)
 ```
 
-### `write(text, *, extraction_logic=ExtractionLogic.DEEP, timeout=None) → WriteResponse`
+### `write(text, *, extraction_logic=ExtractionLogic.DEEP, trace_id=None, diff_engine=None, timeout=None) → WriteResponse`
 
 Extract structured objects from `text` and persist them to the instance.
 
@@ -149,9 +150,10 @@ from xmemory import ExtractionLogic
 resp = mem.write("Bob joined the team on Monday as a designer.")
 resp = mem.write("...", extraction_logic=ExtractionLogic.FAST)
 print(resp.cleaned_objects)
+print(resp.trace_id)
 ```
 
-### `write_async(text, *, extraction_logic=ExtractionLogic.DEEP, timeout=None) → AsyncWriteResponse`
+### `write_async(text, *, extraction_logic=ExtractionLogic.DEEP, diff_engine=None, timeout=None) → AsyncWriteResponse`
 
 Submit a write job and return immediately with a `write_id` for polling.
 Useful when you don't want to block on a potentially slow extraction.
@@ -180,6 +182,7 @@ Extract structured objects from `text` without writing them to the instance.
 ```python
 resp = mem.extract("Carol is a manager based in Berlin.")
 print(resp.objects_extracted)
+print(resp.trace_id)
 ```
 
 ## Async methods
@@ -196,7 +199,7 @@ async with async_xmemory_instance(instance_id="abc") as mem:
     result = await mem.read("What does Alice do?", read_mode=ReadMode.SINGLE_ANSWER)
 
     # async write with polling
-    job = await mem.write_async("Bob joined the team.")
+    job = await mem.write_async("Bob joined the team.", diff_engine=True)
     status = await mem.write_status(job.write_id)
 ```
 
