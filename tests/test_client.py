@@ -1,4 +1,5 @@
 """Unit tests for XmemoryClient / AdminAPI / InstanceAPI."""
+from __future__ import annotations
 
 import uuid
 
