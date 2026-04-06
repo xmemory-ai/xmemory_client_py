@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import uuid
+
 from typing import Any
 
 from xmemory._instance import AsyncInstanceAPI, InstanceAPI
@@ -125,7 +125,7 @@ class AdminAPI:
             timeout=timeout,
         )
 
-    def delete_instance(self, instance_id: str, *, timeout: float | None = None) -> list[uuid.UUID]:
+    def delete_instance(self, instance_id: str, *, timeout: float | None = None) -> list[str]:
         """Delete an instance by ID. Returns the list of deleted IDs."""
         return self._t.request_ids("DELETE", f"/instances/{instance_id}", timeout=timeout)
 
@@ -236,6 +236,6 @@ class AsyncAdminAPI:
             timeout=timeout,
         )
 
-    async def delete_instance(self, instance_id: str, *, timeout: float | None = None) -> list[uuid.UUID]:
+    async def delete_instance(self, instance_id: str, *, timeout: float | None = None) -> list[str]:
         """Delete an instance by ID. Returns the list of deleted IDs."""
         return await self._t.request_ids("DELETE", f"/instances/{instance_id}", timeout=timeout)

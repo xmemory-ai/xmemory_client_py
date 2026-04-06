@@ -154,13 +154,13 @@ def test_admin_get_instance(httpx_mock, client):
 def test_admin_generate_schema(httpx_mock, client):
     route = httpx_mock.post(f"/clusters/{CLUSTER_ID}/instances/generate_schema").mock(
         return_value=httpx.Response(200, json=_api_ok([
-            {"generated_schema": {"tables": []}},
+            {"data_schema": {"tables": []}},
         ])),
     )
 
     result = client.admin.generate_schema(CLUSTER_ID, "a CRM")
 
-    assert result.generated_schema == {"tables": []}
+    assert result.data_schema == {"tables": []}
     assert route.called
     assert b'"schema_description":"a CRM"' in route.calls.last.request.content
 
