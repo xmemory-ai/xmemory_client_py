@@ -3,7 +3,7 @@ name = "xmemory-ai"
 version = "0.4.0"
 description = "Python client library for the Xmemory API"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = { text = "Proprietary" }
 dependencies = [
     "pydantic>=2.0",
@@ -32,7 +32,7 @@ venvPath = "."
 venv = ".venv"
 ignore = []
 typeCheckingMode = "standard"
-pythonVersion = "3.9"
+pythonVersion = "3.10"
 reportMissingImports = true
 reportMissingTypeStubs = false
 reportImportCycles = true
