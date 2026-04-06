@@ -62,7 +62,7 @@ def test_client_default_construction():
 
 
 def test_client_rejects_url_and_http_client():
-    with pytest.raises(XmemoryAPIError):
+    with pytest.raises(ValueError):
         XmemoryClient(
             url="http://localhost:8000",
             http_client=httpx.Client(base_url="http://localhost:8000"),
@@ -287,8 +287,9 @@ def test_admin_delete_instance(httpx_mock, client):
 # ---------------------------------------------------------------------------
 
 
-def test_api_error_from_errors_field(httpx_mock, client):
-    httpx_mock.get(f"/clusters/{CLUSTER_ID}").mock(return_value=httpx.Response(404, json={
+def test_api_error_from_errors_field_2xx(httpx_mock, client):
+    """Errors in the wrapper body on a 200 response."""
+    httpx_mock.get(f"/clusters/{CLUSTER_ID}").mock(return_value=httpx.Response(200, json={
         "ids": [], "items": [],
         "errors": [{"code": "NOT_FOUND", "message": "Resource not found"}],
     }))
@@ -297,11 +298,33 @@ def test_api_error_from_errors_field(httpx_mock, client):
         client.admin.get_cluster(CLUSTER_ID)
 
 
+def test_api_error_from_errors_field_non_2xx(httpx_mock, client):
+    """Structured errors in a non-2xx response body are preferred over raw HTTP text."""
+    httpx_mock.get(f"/clusters/{CLUSTER_ID}").mock(return_value=httpx.Response(404, json={
+        "ids": [], "items": [],
+        "errors": [{"code": "NOT_FOUND", "message": "Resource not found"}],
+    }))
+
+    with pytest.raises(XmemoryAPIError, match="failed: Resource not found"):
+        client.admin.get_cluster(CLUSTER_ID)
+
+
 def test_api_error_from_http_status(httpx_mock, client):
+    """Plain text error without structured body falls back to HTTP status."""
     httpx_mock.get("/clusters").mock(return_value=httpx.Response(500, text="Internal Server Error"))
 
     with pytest.raises(XmemoryAPIError, match="500"):
         client.admin.list_clusters()
+
+
+def test_api_error_empty_items(httpx_mock, client):
+    """Success response with no items raises an error."""
+    httpx_mock.get(f"/instances/{INSTANCE_ID}").mock(return_value=httpx.Response(200, json={
+        "ids": [], "items": [], "errors": [],
+    }))
+
+    with pytest.raises(XmemoryAPIError, match="returned no items"):
+        client.admin.get_instance(INSTANCE_ID)
 
 
 # ---------------------------------------------------------------------------

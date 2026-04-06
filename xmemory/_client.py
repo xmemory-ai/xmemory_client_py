@@ -5,7 +5,7 @@ import os
 import httpx
 
 from xmemory._admin import AdminAPI, AsyncAdminAPI
-from xmemory._exceptions import XmemoryAPIError, XmemoryHealthCheckError
+from xmemory._exceptions import XmemoryHealthCheckError
 from xmemory._instance import AsyncInstanceAPI, InstanceAPI
 from xmemory._transport import AsyncTransport, SyncTransport
 
@@ -39,13 +39,15 @@ class XmemoryClient:
     ) -> None:
         token = token or os.environ.get("XMEM_AUTH_TOKEN")
 
+        # Constructor validation uses TypeError/ValueError (not XmemoryAPIError)
+        # because these are programming errors, not API communication failures.
         if http_client is not None:
             if not isinstance(http_client, httpx.Client):
-                raise XmemoryAPIError("http_client must be an instance of httpx.Client")
+                raise TypeError("http_client must be an instance of httpx.Client")
             if url is not None:
-                raise XmemoryAPIError("Cannot specify both 'url' and 'http_client' — set base_url on the client directly")
+                raise ValueError("Cannot specify both 'url' and 'http_client' — set base_url on the client directly")
             if not http_client.base_url.host:
-                raise XmemoryAPIError("http_client must have base_url set — or omit it and pass url= instead")
+                raise ValueError("http_client must have base_url set — or omit it and pass url= instead")
             self._client = http_client
             self._owns_client = False
         else:
@@ -115,11 +117,11 @@ class AsyncXmemoryClient:
 
         if http_client is not None:
             if not isinstance(http_client, httpx.AsyncClient):
-                raise XmemoryAPIError("http_client must be an instance of httpx.AsyncClient")
+                raise TypeError("http_client must be an instance of httpx.AsyncClient")
             if url is not None:
-                raise XmemoryAPIError("Cannot specify both 'url' and 'http_client' — set base_url on the client directly")
+                raise ValueError("Cannot specify both 'url' and 'http_client' — set base_url on the client directly")
             if not http_client.base_url.host:
-                raise XmemoryAPIError("http_client must have base_url set — or omit it and pass url= instead")
+                raise ValueError("http_client must have base_url set — or omit it and pass url= instead")
             self._client = http_client
             self._owns_client = False
         else:

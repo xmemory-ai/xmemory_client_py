@@ -32,6 +32,21 @@ class SyncTransport:
             raise XmemoryAPIError(path + " failed: " + parsed.errors[0].message, status=resp.status_code)
         return parsed
 
+    def _parse_err(self, resp: httpx.Response, path: str) -> str:
+        """Build an error message from the response, preferring structured errors."""
+        try:
+            if resp.text:
+                parsed = _RawApiResponse.model_validate(resp.json())
+                if parsed.errors:
+                    return path + " failed: " + parsed.errors[0].message
+        except Exception:
+            pass
+        msg = "HTTP " + str(resp.status_code)
+        detail = resp.text.strip() if resp.text else None
+        if detail:
+            msg = msg + " — " + detail
+        return msg
+
     def request(
         self,
         method: str,
@@ -52,11 +67,7 @@ class SyncTransport:
         except XmemoryAPIError:
             raise
         except httpx.HTTPStatusError as e:
-            msg = "HTTP " + str(e.response.status_code)
-            detail = e.response.text.strip() if e.response.text else None
-            if detail:
-                msg = msg + " — " + detail
-            raise XmemoryAPIError(msg, status=e.response.status_code) from e
+            raise XmemoryAPIError(self._parse_err(e.response, path), status=e.response.status_code) from e
         except httpx.ConnectError as e:
             raise XmemoryAPIError("Connection error: " + str(e)) from e
         except Exception as e:
@@ -122,6 +133,21 @@ class AsyncTransport:
             raise XmemoryAPIError(path + " failed: " + parsed.errors[0].message, status=resp.status_code)
         return parsed
 
+    def _parse_err(self, resp: httpx.Response, path: str) -> str:
+        """Build an error message from the response, preferring structured errors."""
+        try:
+            if resp.text:
+                parsed = _RawApiResponse.model_validate(resp.json())
+                if parsed.errors:
+                    return path + " failed: " + parsed.errors[0].message
+        except Exception:
+            pass
+        msg = "HTTP " + str(resp.status_code)
+        detail = resp.text.strip() if resp.text else None
+        if detail:
+            msg = msg + " — " + detail
+        return msg
+
     async def request(
         self,
         method: str,
@@ -142,11 +168,7 @@ class AsyncTransport:
         except XmemoryAPIError:
             raise
         except httpx.HTTPStatusError as e:
-            msg = "HTTP " + str(e.response.status_code)
-            detail = e.response.text.strip() if e.response.text else None
-            if detail:
-                msg = msg + " — " + detail
-            raise XmemoryAPIError(msg, status=e.response.status_code) from e
+            raise XmemoryAPIError(self._parse_err(e.response, path), status=e.response.status_code) from e
         except httpx.ConnectError as e:
             raise XmemoryAPIError("Connection error: " + str(e)) from e
         except Exception as e:
