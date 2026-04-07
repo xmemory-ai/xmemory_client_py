@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import uuid
 from datetime import datetime
 from enum import Enum
 from typing import Any
@@ -44,15 +43,15 @@ class WriteQueueStatus(str, Enum):
 
 
 class ClusterInfo(BaseModel):
-    id: uuid.UUID
-    org_id: uuid.UUID
+    id: str
+    org_id: str
     name: str
     description: str | None = None
 
 
 class InstanceInfo(BaseModel):
-    id: uuid.UUID
-    cluster_id: uuid.UUID
+    id: str
+    cluster_id: str
     name: str
     description: str | None = None
     data_schema: dict[str, Any] | None = None
@@ -96,7 +95,7 @@ class ExtractResult(BaseModel):
 
 
 class GenerateSchemaResult(BaseModel):
-    generated_schema: dict[str, Any]
+    data_schema: dict[str, Any]
 
 
 # ---------------------------------------------------------------------------
@@ -164,11 +163,11 @@ class _ApiError(BaseModel):
     code: str
     message: str
     field: str | None = None
-    resource_id: uuid.UUID | None = None
+    resource_id: str | None = None
 
 
 class _RawApiResponse(BaseModel):
-    ids: list[uuid.UUID] = []
+    ids: list[str] = []
     items: list[Any] = []
     errors: list[_ApiError] = []
 

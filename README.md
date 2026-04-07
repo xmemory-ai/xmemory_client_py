@@ -107,7 +107,7 @@ client.admin.update_instance_metadata("<instance-id>", "new-name", "new descript
 
 # Schema generation
 result = client.admin.generate_schema(cluster_id, "People with name, role, and location.")
-print(result.generated_schema)
+print(result.data_schema)
 ```
 
 `create_instance` returns an `InstanceAPI` bound to the new instance, ready for data operations.

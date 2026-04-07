@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import uuid
+
 from typing import Any, TypeVar
 
 import httpx
@@ -109,7 +109,7 @@ class SyncTransport:
         body: BaseModel | None = None,
         params: dict[str, Any] | None = None,
         timeout: float | None = None,
-    ) -> list[uuid.UUID]:
+    ) -> list[str]:
         return self.request(method, path, body=body, params=params, timeout=timeout).ids
 
 
@@ -210,5 +210,5 @@ class AsyncTransport:
         body: BaseModel | None = None,
         params: dict[str, Any] | None = None,
         timeout: float | None = None,
-    ) -> list[uuid.UUID]:
+    ) -> list[str]:
         return (await self.request(method, path, body=body, params=params, timeout=timeout)).ids
