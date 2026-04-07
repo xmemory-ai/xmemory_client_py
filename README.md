@@ -258,7 +258,7 @@ except XmemoryAPIError as e:
 | `admin.get_instance_schema()` | `InstanceSchemaInfo` |
 | `admin.update_instance_schema()` | `InstanceInfo` |
 | `admin.update_instance_metadata()` | `InstanceInfo` |
-| `admin.delete_instance()` | `list[uuid.UUID]` |
+| `admin.delete_instance()` | `list[str]` |
 | `admin.generate_schema()` | `GenerateSchemaResult` |
 | `inst.read()` | `ReadResult` |
 | `inst.write()` | `WriteResult` |
