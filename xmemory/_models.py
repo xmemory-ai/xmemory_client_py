@@ -99,6 +99,123 @@ class GenerateSchemaResult(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Describe models
+# ---------------------------------------------------------------------------
+
+
+class ToolParameterDescription(BaseModel):
+    name: str
+    type: str
+    description: str
+    required: bool = True
+    enum: list[str] | None = None
+    default: str | None = None
+
+
+class ToolDescription(BaseModel):
+    name: str
+    description: str
+    when_to_use: str
+    parameters: list[ToolParameterDescription]
+    http_method: str
+    http_path: str
+
+
+class DescribeResult(BaseModel):
+    """Agent-facing tool descriptions for an instance, with format helpers."""
+
+    instance_id: str
+    instance_name: str
+    schema_summary: str
+    tools: list[ToolDescription]
+
+    def as_text(self, *, include_http: bool = False) -> str:
+        """Return a plain-text representation suitable for injecting into an LLM system prompt.
+
+        By default, tools are presented as method calls (matching the SDK).
+        Set *include_http* to ``True`` to also show HTTP method and path for
+        raw REST callers.
+        """
+        lines: list[str] = []
+        lines.append(f"Instance: {self.instance_name} ({self.instance_id})")
+        if self.schema_summary:
+            lines.append(f"\n{self.schema_summary}")
+        lines.append("\nAvailable tools:\n")
+        for tool in self.tools:
+            params_sig = ", ".join(
+                p.name + ("?" if not p.required else "") for p in tool.parameters
+            )
+            lines.append(f"## {tool.name}({params_sig})")
+            lines.append(tool.description)
+            lines.append(f"When to use: {tool.when_to_use}")
+            if include_http:
+                lines.append(f"HTTP: {tool.http_method} {tool.http_path}")
+            if tool.parameters:
+                lines.append("Parameters:")
+                for p in tool.parameters:
+                    req = "required" if p.required else "optional"
+                    parts = [f"  - {p.name} ({p.type}, {req}): {p.description}"]
+                    if p.enum:
+                        parts.append(f"    Allowed values: {', '.join(p.enum)}")
+                    if p.default is not None:
+                        parts.append(f"    Default: {p.default}")
+                    lines.extend(parts)
+            lines.append("")
+        return "\n".join(lines)
+
+    def as_anthropic_tools(self) -> list[dict[str, Any]]:
+        """Return tool definitions in the Anthropic tool-use format."""
+        result: list[dict[str, Any]] = []
+        for tool in self.tools:
+            properties: dict[str, Any] = {}
+            required: list[str] = []
+            for p in tool.parameters:
+                prop: dict[str, Any] = {"type": p.type, "description": p.description}
+                if p.enum:
+                    prop["enum"] = p.enum
+                properties[p.name] = prop
+                if p.required:
+                    required.append(p.name)
+            result.append({
+                "name": tool.name,
+                "description": f"{tool.description}\n\nWhen to use: {tool.when_to_use}",
+                "input_schema": {
+                    "type": "object",
+                    "properties": properties,
+                    "required": required,
+                },
+            })
+        return result
+
+    def as_openai_tools(self) -> list[dict[str, Any]]:
+        """Return tool definitions in the OpenAI function-calling format."""
+        result: list[dict[str, Any]] = []
+        for tool in self.tools:
+            properties: dict[str, Any] = {}
+            required: list[str] = []
+            for p in tool.parameters:
+                prop: dict[str, Any] = {"type": p.type, "description": p.description}
+                if p.enum:
+                    prop["enum"] = p.enum
+                properties[p.name] = prop
+                if p.required:
+                    required.append(p.name)
+            result.append({
+                "type": "function",
+                "function": {
+                    "name": tool.name,
+                    "description": f"{tool.description}\n\nWhen to use: {tool.when_to_use}",
+                    "parameters": {
+                        "type": "object",
+                        "properties": properties,
+                        "required": required,
+                    },
+                },
+            })
+        return result
+
+
+# ---------------------------------------------------------------------------
 # Internal request models
 # ---------------------------------------------------------------------------
 
