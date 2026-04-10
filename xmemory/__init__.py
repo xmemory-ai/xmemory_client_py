@@ -5,6 +5,7 @@ from xmemory._exceptions import (
 from xmemory._models import (
     AsyncWriteResult,
     ClusterInfo,
+    DescribeResult,
     ExtractResult,
     ExtractionLogic,
     GenerateSchemaResult,
@@ -13,6 +14,8 @@ from xmemory._models import (
     ReadMode,
     ReadResult,
     SchemaType,
+    ToolDescription,
+    ToolParameterDescription,
     WriteQueueStatus,
     WriteResult,
     WriteStatusResult,
@@ -52,4 +55,7 @@ __all__ = [
     "WriteStatusResult",
     "ExtractResult",
     "GenerateSchemaResult",
+    "DescribeResult",
+    "ToolDescription",
+    "ToolParameterDescription",
 ]
