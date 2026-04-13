@@ -6,20 +6,15 @@ from xmemory._models import (
     DescribeResult,
     ExtractResult,
     ExtractionLogic,
-    InstanceInfo,
     InstanceSchemaInfo,
     ReadMode,
     ReadResult,
-    SchemaType,
     WriteResult,
     WriteStatusResult,
     _ExtractRequest,
     _ReadRequest,
-    _UpdateMetadataRequest,
-    _UpdateSchemaRequest,
     _WriteRequest,
     _WriteStatusRequest,
-    build_instance_schema,
 )
 from xmemory._transport import AsyncTransport, SyncTransport
 
@@ -27,7 +22,7 @@ _DEFAULT_DESCRIBE_TTL_SECONDS: float = 300.0  # 5 minutes
 
 
 class InstanceAPI:
-    """Instance-bound client for data operations and instance management (sync)."""
+    """Instance-bound client for data operations (sync)."""
 
     def __init__(self, instance_id: str, transport: SyncTransport) -> None:
         self._id = instance_id
@@ -116,40 +111,6 @@ class InstanceAPI:
             "GET", f"/instances/{self._id}/schema", InstanceSchemaInfo, timeout=timeout,
         )
 
-    # -- Instance management ---------------------------------------------------
-
-    def update_schema(
-        self,
-        schema_text: str,
-        schema_type: SchemaType,
-        *,
-        timeout: float | None = None,
-    ) -> InstanceInfo:
-        """Replace the schema of this instance."""
-        return self._t.request_one(
-            "PUT", f"/instances/{self._id}/schema", InstanceInfo,
-            body=_UpdateSchemaRequest(instance_schema=build_instance_schema(schema_text, schema_type)),
-            timeout=timeout,
-        )
-
-    def update_metadata(
-        self,
-        name: str,
-        description: str | None,
-        *,
-        timeout: float | None = None,
-    ) -> InstanceInfo:
-        """Update the name and description of this instance."""
-        return self._t.request_one(
-            "PUT", f"/instances/{self._id}", InstanceInfo,
-            body=_UpdateMetadataRequest(name=name, description=description),
-            timeout=timeout,
-        )
-
-    def delete(self, *, timeout: float | None = None) -> list[str]:
-        """Delete this instance and all its data. Returns the list of deleted IDs."""
-        return self._t.request_ids("DELETE", f"/instances/{self._id}", timeout=timeout)
-
     # -- Describe (agent tool descriptions) -----------------------------------
 
     def describe(self, *, timeout: float | None = None) -> DescribeResult:
@@ -179,7 +140,7 @@ class InstanceAPI:
 
 
 class AsyncInstanceAPI:
-    """Instance-bound client for data operations and instance management (async)."""
+    """Instance-bound client for data operations (async)."""
 
     def __init__(self, instance_id: str, transport: AsyncTransport) -> None:
         self._id = instance_id
@@ -266,40 +227,6 @@ class AsyncInstanceAPI:
         return await self._t.request_one(
             "GET", f"/instances/{self._id}/schema", InstanceSchemaInfo, timeout=timeout,
         )
-
-    # -- Instance management ---------------------------------------------------
-
-    async def update_schema(
-        self,
-        schema_text: str,
-        schema_type: SchemaType,
-        *,
-        timeout: float | None = None,
-    ) -> InstanceInfo:
-        """Replace the schema of this instance."""
-        return await self._t.request_one(
-            "PUT", f"/instances/{self._id}/schema", InstanceInfo,
-            body=_UpdateSchemaRequest(instance_schema=build_instance_schema(schema_text, schema_type)),
-            timeout=timeout,
-        )
-
-    async def update_metadata(
-        self,
-        name: str,
-        description: str | None,
-        *,
-        timeout: float | None = None,
-    ) -> InstanceInfo:
-        """Update the name and description of this instance."""
-        return await self._t.request_one(
-            "PUT", f"/instances/{self._id}", InstanceInfo,
-            body=_UpdateMetadataRequest(name=name, description=description),
-            timeout=timeout,
-        )
-
-    async def delete(self, *, timeout: float | None = None) -> list[str]:
-        """Delete this instance and all its data. Returns the list of deleted IDs."""
-        return await self._t.request_ids("DELETE", f"/instances/{self._id}", timeout=timeout)
 
     # -- Describe (agent tool descriptions) -----------------------------------
 
