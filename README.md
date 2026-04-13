@@ -265,6 +265,8 @@ except XmemoryAPIError as e:
 | `inst.write_async()` | `AsyncWriteResult` |
 | `inst.write_status()` | `WriteStatusResult` |
 | `inst.extract()` | `ExtractResult` |
+| `inst.get_schema()` | `InstanceSchemaInfo` |
+| `inst.describe()` | `DescribeResult` |
 
 ## Package publishing to pip
 
