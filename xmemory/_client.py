@@ -7,6 +7,7 @@ import httpx
 from xmemory._admin import AdminAPI, AsyncAdminAPI
 from xmemory._exceptions import XmemoryHealthCheckError
 from xmemory._instance import AsyncInstanceAPI, InstanceAPI
+from xmemory._keepalive import keepalive_socket_options
 from xmemory._transport import AsyncTransport, SyncTransport
 
 
@@ -52,7 +53,11 @@ class XmemoryClient:
             self._owns_client = False
         else:
             base = url or os.environ.get("XMEM_API_URL") or "https://api.xmemory.ai"
-            self._client = httpx.Client(base_url=base, timeout=timeout)
+            # Enable TCP keep-alive on our default transport so the kernel
+            # detects half-broken connections in ~60 s instead of stalling
+            # ``recv()`` for the full request timeout.
+            transport = httpx.HTTPTransport(socket_options=keepalive_socket_options())
+            self._client = httpx.Client(base_url=base, timeout=timeout, transport=transport)
             self._owns_client = True
 
         self._transport = SyncTransport(self._client, token, timeout)
@@ -126,7 +131,8 @@ class AsyncXmemoryClient:
             self._owns_client = False
         else:
             base = url or os.environ.get("XMEM_API_URL") or "https://api.xmemory.ai"
-            self._client = httpx.AsyncClient(base_url=base, timeout=timeout)
+            transport = httpx.AsyncHTTPTransport(socket_options=keepalive_socket_options())
+            self._client = httpx.AsyncClient(base_url=base, timeout=timeout, transport=transport)
             self._owns_client = True
 
         self._transport = AsyncTransport(self._client, token, timeout)
