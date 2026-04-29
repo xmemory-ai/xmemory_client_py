@@ -167,9 +167,10 @@ def test_write_async_and_poll(instance):
     async_result = inst.write_async("Dave is an intern starting next Monday.")
     assert async_result.write_id
 
+    status = inst.write_status(async_result.write_id)
     for _ in range(15):
-        status = inst.write_status(async_result.write_id)
         if status.write_status.value in ("completed", "failed"):
             break
         time.sleep(2)
+        status = inst.write_status(async_result.write_id)
     assert status.write_status.value == "completed"
