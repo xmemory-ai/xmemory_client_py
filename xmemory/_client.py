@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 
 import httpx
 
@@ -11,12 +12,53 @@ from xmemory._keepalive import keepalive_socket_options
 from xmemory._transport import AsyncTransport, SyncTransport
 
 
+_ORANGE = "\033[38;5;208m"
+_RESET = "\033[0m"
+
+
+def _warn_legacy_token(source: str) -> None:
+    """Emit an orange-colored deprecation notice to stderr.
+
+    ``source`` describes what the caller used (e.g. ``"token=`` argument") so
+    operators know which usage to migrate.
+    """
+    print(
+        _ORANGE
+        + "DeprecationWarning: "
+        + source
+        + " is a legacy term and will be removed in a future release; use the api_key equivalent instead."
+        + _RESET,
+        file=sys.stderr,
+    )
+
+
+def _resolve_api_key(api_key: str | None, token: str | None) -> str | None:
+    """Resolve the credential, honoring the new ``api_key`` term first.
+
+    Order: ``api_key=`` arg, then legacy ``token=`` arg (warns), then
+    ``XMEM_API_KEY`` env var, then legacy ``XMEM_AUTH_TOKEN`` env var (warns).
+    """
+    if api_key is not None:
+        return api_key
+    if token is not None:
+        _warn_legacy_token("`token=` argument")
+        return token
+    env_api_key = os.environ.get("XMEM_API_KEY")
+    if env_api_key is not None:
+        return env_api_key
+    env_token = os.environ.get("XMEM_AUTH_TOKEN")
+    if env_token is not None:
+        _warn_legacy_token("`XMEM_AUTH_TOKEN` env var")
+        return env_token
+    return None
+
+
 class XmemoryClient:
     """Synchronous Xmemory client with admin/instance namespaces.
 
     Usage::
 
-        client = XmemoryClient(token="xmem_...")
+        client = XmemoryClient(api_key="xmem_...")
 
         # Admin operations
         clusters = client.admin.list_clusters()
@@ -35,10 +77,11 @@ class XmemoryClient:
         url: str | None = None,
         *,
         timeout: float = 60,
+        api_key: str | None = None,
         token: str | None = None,
         http_client: httpx.Client | None = None,
     ) -> None:
-        token = token or os.environ.get("XMEM_AUTH_TOKEN")
+        api_key = _resolve_api_key(api_key, token)
 
         # Constructor validation uses TypeError/ValueError (not XmemoryAPIError)
         # because these are programming errors, not API communication failures.
@@ -60,7 +103,7 @@ class XmemoryClient:
             self._client = httpx.Client(base_url=base, timeout=timeout, transport=transport)
             self._owns_client = True
 
-        self._transport = SyncTransport(self._client, token, timeout)
+        self._transport = SyncTransport(self._client, api_key, timeout)
         self._admin = AdminAPI(self._transport)
 
     @property
@@ -104,7 +147,7 @@ class AsyncXmemoryClient:
 
     Usage::
 
-        async with AsyncXmemoryClient(token="xmem_...") as client:
+        async with AsyncXmemoryClient(api_key="xmem_...") as client:
             clusters = await client.admin.list_clusters()
             inst = await client.admin.create_instance(cluster_id, "name", schema, SchemaType.YML)
             await inst.write("Bob is an engineer.")
@@ -115,10 +158,11 @@ class AsyncXmemoryClient:
         url: str | None = None,
         *,
         timeout: float = 60,
+        api_key: str | None = None,
         token: str | None = None,
         http_client: httpx.AsyncClient | None = None,
     ) -> None:
-        token = token or os.environ.get("XMEM_AUTH_TOKEN")
+        api_key = _resolve_api_key(api_key, token)
 
         if http_client is not None:
             if not isinstance(http_client, httpx.AsyncClient):
@@ -135,7 +179,7 @@ class AsyncXmemoryClient:
             self._client = httpx.AsyncClient(base_url=base, timeout=timeout, transport=transport)
             self._owns_client = True
 
-        self._transport = AsyncTransport(self._client, token, timeout)
+        self._transport = AsyncTransport(self._client, api_key, timeout)
         self._admin = AsyncAdminAPI(self._transport)
 
     @property

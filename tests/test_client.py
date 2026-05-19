@@ -41,13 +41,13 @@ def httpx_mock(base_url):
 
 @pytest.fixture()
 def client(base_url):
-    with XmemoryClient(url=base_url, token="test-token") as c:
+    with XmemoryClient(url=base_url, api_key="test-api-key") as c:
         yield c
 
 
 @pytest.fixture()
 async def async_client(base_url):
-    async with AsyncXmemoryClient(url=base_url, token="test-token") as c:
+    async with AsyncXmemoryClient(url=base_url, api_key="test-api-key") as c:
         yield c
 
 
@@ -73,13 +73,72 @@ def test_client_context_manager(client):
     assert client.admin is not None
 
 
-def test_token_passed_in_auth_header(httpx_mock, client):
+def test_api_key_passed_in_auth_header(httpx_mock, client):
     route = httpx_mock.get("/clusters").mock(return_value=httpx.Response(200, json=_api_ok([])))
 
     client.admin.list_clusters()
 
     assert route.called
-    assert route.calls.last.request.headers["authorization"] == "Bearer test-token"
+    assert route.calls.last.request.headers["authorization"] == "Bearer test-api-key"
+
+
+# ---------------------------------------------------------------------------
+# Legacy `token` term — accepted with a deprecation notice
+# ---------------------------------------------------------------------------
+
+
+def test_legacy_token_argument_warns_and_still_works(httpx_mock, base_url, capsys):
+    """Passing ``token=`` (legacy) must still authenticate but print an
+    orange-colored deprecation notice naming the legacy term."""
+    route = httpx_mock.get("/clusters").mock(return_value=httpx.Response(200, json=_api_ok([])))
+
+    with XmemoryClient(url=base_url, token="legacy-value") as c:
+        c.admin.list_clusters()
+
+    err = capsys.readouterr().err
+    assert "DeprecationWarning" in err
+    assert "token" in err
+    assert "\033[38;5;208m" in err  # orange ANSI prefix
+    assert route.calls.last.request.headers["authorization"] == "Bearer legacy-value"
+
+
+def test_legacy_token_env_var_warns_and_still_works(httpx_mock, base_url, monkeypatch, capsys):
+    """``XMEM_AUTH_TOKEN`` is the legacy env var; it must still work but warn."""
+    monkeypatch.delenv("XMEM_API_KEY", raising=False)
+    monkeypatch.setenv("XMEM_AUTH_TOKEN", "legacy-env-value")
+    route = httpx_mock.get("/clusters").mock(return_value=httpx.Response(200, json=_api_ok([])))
+
+    with XmemoryClient(url=base_url) as c:
+        c.admin.list_clusters()
+
+    err = capsys.readouterr().err
+    assert "DeprecationWarning" in err
+    assert "XMEM_AUTH_TOKEN" in err
+    assert "\033[38;5;208m" in err
+    assert route.calls.last.request.headers["authorization"] == "Bearer legacy-env-value"
+
+
+def test_api_key_argument_takes_precedence_over_legacy_token(base_url, capsys):
+    """``api_key=`` wins over ``token=`` and silences the deprecation notice."""
+    with XmemoryClient(url=base_url, api_key="new-value", token="old-value"):
+        pass
+
+    err = capsys.readouterr().err
+    assert "DeprecationWarning" not in err
+
+
+def test_new_env_var_preferred_over_legacy(httpx_mock, base_url, monkeypatch, capsys):
+    """``XMEM_API_KEY`` is checked before ``XMEM_AUTH_TOKEN`` (no warning)."""
+    monkeypatch.setenv("XMEM_API_KEY", "new-env-value")
+    monkeypatch.setenv("XMEM_AUTH_TOKEN", "legacy-env-value")
+    route = httpx_mock.get("/clusters").mock(return_value=httpx.Response(200, json=_api_ok([])))
+
+    with XmemoryClient(url=base_url) as c:
+        c.admin.list_clusters()
+
+    err = capsys.readouterr().err
+    assert "DeprecationWarning" not in err
+    assert route.calls.last.request.headers["authorization"] == "Bearer new-env-value"
 
 
 # ---------------------------------------------------------------------------
