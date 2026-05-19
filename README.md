@@ -7,7 +7,7 @@ Python client library for the [xmemory](https://xmemory.ai) API.
 ```python
 from xmemory import XmemoryClient, SchemaType
 
-client = XmemoryClient(token="xmem_...")  # or set XMEM_AUTH_TOKEN env var
+client = XmemoryClient(api_key="xmem_...")  # or set XMEM_API_KEY env var
 
 # Create an instance and start using it immediately
 schema = """\
@@ -56,7 +56,7 @@ import asyncio
 from xmemory import AsyncXmemoryClient, SchemaType
 
 async def main():
-    async with AsyncXmemoryClient(token="xmem_...") as client:
+    async with AsyncXmemoryClient(api_key="xmem_...") as client:
         inst = await client.admin.create_instance(
             cluster_id="<cluster-id>",
             name="my-memory",
@@ -75,8 +75,13 @@ asyncio.run(main())
 | Parameter     | Env var           | Default                    | Description                        |
 |---------------|-------------------|----------------------------|------------------------------------|
 | `url`         | `XMEM_API_URL`    | `https://api.xmemory.ai`   | Base URL of the Xmemory API        |
-| `token`       | `XMEM_AUTH_TOKEN` | `None`                     | Bearer token for authentication    |
+| `api_key`     | `XMEM_API_KEY`    | `None`                     | API key for authentication         |
 | `timeout`     | —                 | `60`                       | Default request timeout in seconds |
+
+> **Deprecation:** The legacy term `token` (argument `token=` and env var
+> `XMEM_AUTH_TOKEN`) is still accepted for backwards compatibility but prints an
+> orange-colored deprecation notice on use. Migrate to `api_key` /
+> `XMEM_API_KEY`. The legacy names will be removed in a future release.
 
 ## Client structure
 
@@ -198,12 +203,12 @@ Both clients support the context manager protocol and close the underlying HTTP 
 
 ```python
 # sync
-with XmemoryClient(token="xmem_...") as client:
+with XmemoryClient(api_key="xmem_...") as client:
     inst = client.instance("abc")
     inst.write("...")
 
 # async
-async with AsyncXmemoryClient(token="xmem_...") as client:
+async with AsyncXmemoryClient(api_key="xmem_...") as client:
     inst = client.instance("abc")
     await inst.write("...")
 ```
@@ -218,7 +223,7 @@ import httpx
 from xmemory import XmemoryClient
 
 http = httpx.Client(base_url="https://api.xmemory.ai", timeout=30)
-client = XmemoryClient(http_client=http, token="xmem_...")
+client = XmemoryClient(http_client=http, api_key="xmem_...")
 ```
 
 ## Health check

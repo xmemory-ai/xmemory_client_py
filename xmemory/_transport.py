@@ -15,14 +15,14 @@ _T = TypeVar("_T", bound=BaseModel)
 class SyncTransport:
     """Synchronous HTTP transport with ApiResponse wrapper handling."""
 
-    def __init__(self, client: httpx.Client, token: str | None, timeout: float) -> None:
+    def __init__(self, client: httpx.Client, api_key: str | None, timeout: float) -> None:
         self._client = client
-        self._token = token
+        self._api_key = api_key
         self.timeout = timeout
 
     def _headers(self) -> dict[str, str]:
-        if self._token:
-            return {"Authorization": "Bearer " + self._token}
+        if self._api_key:
+            return {"Authorization": "Bearer " + self._api_key}
         return {}
 
     def _parse(self, resp: httpx.Response, path: str) -> _RawApiResponse:
@@ -116,14 +116,14 @@ class SyncTransport:
 class AsyncTransport:
     """Asynchronous HTTP transport with ApiResponse wrapper handling."""
 
-    def __init__(self, client: httpx.AsyncClient, token: str | None, timeout: float) -> None:
+    def __init__(self, client: httpx.AsyncClient, api_key: str | None, timeout: float) -> None:
         self._client = client
-        self._token = token
+        self._api_key = api_key
         self.timeout = timeout
 
     def _headers(self) -> dict[str, str]:
-        if self._token:
-            return {"Authorization": "Bearer " + self._token}
+        if self._api_key:
+            return {"Authorization": "Bearer " + self._api_key}
         return {}
 
     def _parse(self, resp: httpx.Response, path: str) -> _RawApiResponse:
