@@ -57,7 +57,7 @@ class InstanceAPI:
         self,
         text: str,
         *,
-        extraction_logic: ExtractionLogic = ExtractionLogic.DEEP,
+        extraction_logic: ExtractionLogic = ExtractionLogic.FAST,
         diff_engine: bool | None = None,
         timeout: float | None = None,
     ) -> WriteResult:
@@ -72,7 +72,7 @@ class InstanceAPI:
         self,
         text: str,
         *,
-        extraction_logic: ExtractionLogic = ExtractionLogic.DEEP,
+        extraction_logic: ExtractionLogic = ExtractionLogic.FAST,
         diff_engine: bool | None = None,
         timeout: float | None = None,
     ) -> AsyncWriteResult:
@@ -95,7 +95,7 @@ class InstanceAPI:
         self,
         text: str,
         *,
-        extraction_logic: ExtractionLogic = ExtractionLogic.DEEP,
+        extraction_logic: ExtractionLogic = ExtractionLogic.FAST,
         timeout: float | None = None,
     ) -> ExtractResult:
         """Extract structured data from text without persisting it."""
@@ -174,7 +174,7 @@ class AsyncInstanceAPI:
         self,
         text: str,
         *,
-        extraction_logic: ExtractionLogic = ExtractionLogic.DEEP,
+        extraction_logic: ExtractionLogic = ExtractionLogic.FAST,
         diff_engine: bool | None = None,
         timeout: float | None = None,
     ) -> WriteResult:
@@ -189,7 +189,7 @@ class AsyncInstanceAPI:
         self,
         text: str,
         *,
-        extraction_logic: ExtractionLogic = ExtractionLogic.DEEP,
+        extraction_logic: ExtractionLogic = ExtractionLogic.FAST,
         diff_engine: bool | None = None,
         timeout: float | None = None,
     ) -> AsyncWriteResult:
@@ -212,7 +212,7 @@ class AsyncInstanceAPI:
         self,
         text: str,
         *,
-        extraction_logic: ExtractionLogic = ExtractionLogic.DEEP,
+        extraction_logic: ExtractionLogic = ExtractionLogic.FAST,
         timeout: float | None = None,
     ) -> ExtractResult:
         """Extract structured data from text without persisting it."""

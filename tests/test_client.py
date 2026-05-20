@@ -252,7 +252,7 @@ def test_instance_write(httpx_mock, client):
     assert resp.write_id == "w-1"
     assert route.called
     assert b'"text":"Bob is an engineer."' in route.calls.last.request.content
-    assert b'"extraction_logic":"deep"' in route.calls.last.request.content
+    assert b'"extraction_logic":"fast"' in route.calls.last.request.content
 
 
 def test_instance_write_async(httpx_mock, client):
