@@ -258,13 +258,13 @@ class _ReadRequest(BaseModel):
 
 class _WriteRequest(BaseModel):
     text: str
-    extraction_logic: ExtractionLogic = ExtractionLogic.DEEP
+    extraction_logic: ExtractionLogic = ExtractionLogic.FAST
     use_diff_engine: bool | None = None
 
 
 class _ExtractRequest(BaseModel):
     text: str
-    extraction_logic: ExtractionLogic = ExtractionLogic.DEEP
+    extraction_logic: ExtractionLogic = ExtractionLogic.FAST
 
 
 class _WriteStatusRequest(BaseModel):
