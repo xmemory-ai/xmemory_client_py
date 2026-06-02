@@ -2,6 +2,16 @@
 
 All notable changes to `xmemory-ai` are documented here.
 
+## 0.6.1
+
+### Fixed
+
+- `WriteQueueStatus` now includes the two-phase write-pipeline statuses
+  `extracting`, `extracted`, and `applying`. Previously, polling
+  `write_status` against a server running the parallel-extraction pipeline
+  raised a Pydantic `ValidationError` on these values. They are non-terminal
+  (in-progress) states — keep polling until `completed` / `failed`.
+
 ## 0.6.0
 
 Adds the **schema-evolution** surface. This release is purely additive —

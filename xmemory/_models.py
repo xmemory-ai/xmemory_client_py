@@ -32,6 +32,11 @@ class ReadMode(str, Enum):
 class WriteQueueStatus(str, Enum):
     QUEUED = "queued"
     PROCESSING = "processing"
+    # Two-phase pipeline in-progress states (server returns these when the
+    # parallel-extraction path is enabled). All non-terminal — keep polling.
+    EXTRACTING = "extracting"
+    EXTRACTED = "extracted"
+    APPLYING = "applying"
     COMPLETED = "completed"
     FAILED = "failed"
     NOT_FOUND = "not_found"
