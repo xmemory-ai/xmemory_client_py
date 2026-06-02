@@ -55,6 +55,13 @@ class InstanceInfo(BaseModel):
     name: str
     description: str | None = None
     data_schema: dict[str, Any] | None = None
+    # Schema-evolution fields — populated only by ``update_instance_schema``
+    # when the call ran a (non-no-op) migration. Absent (``None``) on
+    # responses from endpoints that don't migrate (get/create/list).
+    migration_id: str | None = None
+    prior_version: int | None = None
+    new_version: int | None = None
+    migration_warnings: list[str] | None = None
 
 
 class InstanceSchemaInfo(BaseModel):
@@ -238,6 +245,17 @@ class _CreateInstanceRequest(BaseModel):
 
 class _UpdateSchemaRequest(BaseModel):
     instance_schema: _InstanceSchema
+    # Schema-evolution: a serialized MigrationPlan and the destructive gate.
+    # Both default to the legacy additive-only behaviour, so old callers that
+    # only set ``instance_schema`` are unaffected.
+    migration_plan: dict[str, Any] | None = None
+    confirm_destructive: bool = False
+
+
+class _DryRunMigrationRequest(BaseModel):
+    instance_schema: _InstanceSchema
+    migration_plan: dict[str, Any] | None = None
+    confirm_destructive: bool = False
 
 
 class _UpdateMetadataRequest(BaseModel):
