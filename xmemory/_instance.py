@@ -16,6 +16,15 @@ from xmemory._models import (
     _WriteRequest,
     _WriteStatusRequest,
 )
+from xmemory._schema_evolution import (
+    ApplyPendingDecisionsResult,
+    DecideSuggestionsResult,
+    DecisionInput,
+    ReviewSuggestionsResult,
+    _ApplyPendingDecisionsRequest,
+    _DecideSuggestionsRequest,
+    _ReviewSuggestionsRequest,
+)
 from xmemory._transport import AsyncTransport, SyncTransport
 
 _DEFAULT_DESCRIBE_TTL_SECONDS: float = 300.0  # 5 minutes
@@ -109,6 +118,65 @@ class InstanceAPI:
         """Get the current schema of this instance."""
         return self._t.request_one(
             "GET", f"/instances/{self._id}/schema", InstanceSchemaInfo, timeout=timeout,
+        )
+
+    # -- Schema evolution (suggestion engine) ---------------------------------
+
+    def review_suggestions(
+        self, *, session_id: str | None = None, timeout: float | None = None,
+    ) -> ReviewSuggestionsResult:
+        """Return the current consolidated schema-improvement proposal.
+
+        Step 1 of the suggestion-engine flow. The result's
+        ``proposal.proposal_version`` is the optimistic-concurrency token you
+        pass to :meth:`decide_suggestions` and :meth:`apply_pending_decisions`.
+        ``status == "evolution_in_progress"`` means a migration is in flight —
+        back off for ``retry_after_seconds`` and retry.
+        """
+        return self._t.request_one(
+            "POST", f"/instances/{self._id}/suggestions/review", ReviewSuggestionsResult,
+            body=_ReviewSuggestionsRequest(session_id=session_id),
+            timeout=timeout,
+        )
+
+    def decide_suggestions(
+        self,
+        proposal_version: str,
+        decisions: list[DecisionInput],
+        *,
+        session_id: str | None = None,
+        timeout: float | None = None,
+    ) -> DecideSuggestionsResult:
+        """Record accept/reject/defer decisions for proposal items (step 2).
+
+        ``proposal_version`` must be the token from the latest
+        :meth:`review_suggestions`; a stale token raises ``XmemoryAPIError``
+        with ``code == "stale_proposal_version"``. The result's
+        ``next_proposal_version`` can be passed straight to
+        :meth:`apply_pending_decisions`.
+        """
+        return self._t.request_one(
+            "POST", f"/instances/{self._id}/suggestions/decide", DecideSuggestionsResult,
+            body=_DecideSuggestionsRequest(
+                proposal_version=proposal_version, decisions=decisions, session_id=session_id,
+            ),
+            timeout=timeout,
+        )
+
+    def apply_pending_decisions(
+        self, proposal_version: str, *, session_id: str | None = None, timeout: float | None = None,
+    ) -> ApplyPendingDecisionsResult:
+        """Commit accepted decisions as a single migration (step 3).
+
+        ``status == "nothing_to_apply"`` means no accepted items were left.
+        A stale ``proposal_version`` or an unmet dependency raises
+        ``XmemoryAPIError`` (``code == "stale_proposal_version"`` /
+        ``"dependency_closure_failed"``).
+        """
+        return self._t.request_one(
+            "POST", f"/instances/{self._id}/suggestions/apply", ApplyPendingDecisionsResult,
+            body=_ApplyPendingDecisionsRequest(proposal_version=proposal_version, session_id=session_id),
+            timeout=timeout,
         )
 
     # -- Describe (agent tool descriptions) -----------------------------------
@@ -226,6 +294,65 @@ class AsyncInstanceAPI:
         """Get the current schema of this instance."""
         return await self._t.request_one(
             "GET", f"/instances/{self._id}/schema", InstanceSchemaInfo, timeout=timeout,
+        )
+
+    # -- Schema evolution (suggestion engine) ---------------------------------
+
+    async def review_suggestions(
+        self, *, session_id: str | None = None, timeout: float | None = None,
+    ) -> ReviewSuggestionsResult:
+        """Return the current consolidated schema-improvement proposal.
+
+        Step 1 of the suggestion-engine flow. The result's
+        ``proposal.proposal_version`` is the optimistic-concurrency token you
+        pass to :meth:`decide_suggestions` and :meth:`apply_pending_decisions`.
+        ``status == "evolution_in_progress"`` means a migration is in flight —
+        back off for ``retry_after_seconds`` and retry.
+        """
+        return await self._t.request_one(
+            "POST", f"/instances/{self._id}/suggestions/review", ReviewSuggestionsResult,
+            body=_ReviewSuggestionsRequest(session_id=session_id),
+            timeout=timeout,
+        )
+
+    async def decide_suggestions(
+        self,
+        proposal_version: str,
+        decisions: list[DecisionInput],
+        *,
+        session_id: str | None = None,
+        timeout: float | None = None,
+    ) -> DecideSuggestionsResult:
+        """Record accept/reject/defer decisions for proposal items (step 2).
+
+        ``proposal_version`` must be the token from the latest
+        :meth:`review_suggestions`; a stale token raises ``XmemoryAPIError``
+        with ``code == "stale_proposal_version"``. The result's
+        ``next_proposal_version`` can be passed straight to
+        :meth:`apply_pending_decisions`.
+        """
+        return await self._t.request_one(
+            "POST", f"/instances/{self._id}/suggestions/decide", DecideSuggestionsResult,
+            body=_DecideSuggestionsRequest(
+                proposal_version=proposal_version, decisions=decisions, session_id=session_id,
+            ),
+            timeout=timeout,
+        )
+
+    async def apply_pending_decisions(
+        self, proposal_version: str, *, session_id: str | None = None, timeout: float | None = None,
+    ) -> ApplyPendingDecisionsResult:
+        """Commit accepted decisions as a single migration (step 3).
+
+        ``status == "nothing_to_apply"`` means no accepted items were left.
+        A stale ``proposal_version`` or an unmet dependency raises
+        ``XmemoryAPIError`` (``code == "stale_proposal_version"`` /
+        ``"dependency_closure_failed"``).
+        """
+        return await self._t.request_one(
+            "POST", f"/instances/{self._id}/suggestions/apply", ApplyPendingDecisionsResult,
+            body=_ApplyPendingDecisionsRequest(proposal_version=proposal_version, session_id=session_id),
+            timeout=timeout,
         )
 
     # -- Describe (agent tool descriptions) -----------------------------------

@@ -12,6 +12,50 @@ from xmemory._models import _RawApiResponse
 _T = TypeVar("_T", bound=BaseModel)
 
 
+def _structured_error(payload: Any) -> tuple[str | None, str | None, dict[str, Any] | None]:
+    """Extract ``(code, message, details)`` from an error body.
+
+    Handles two server shapes: the schema-evolution
+    ``{"status": "error", "error_type", "error_message", "details"}`` payload
+    (where ``error_type`` is the structured code), and the standard
+    ``{"errors": [{"code", "message"}]}`` envelope. Returns ``(None, None,
+    None)`` if neither shape is present.
+    """
+    if not isinstance(payload, dict):
+        return None, None, None
+    if payload.get("status") == "error" and "error_type" in payload:
+        details = payload.get("details")
+        return (
+            payload.get("error_type"),
+            payload.get("error_message"),
+            details if isinstance(details, dict) else None,
+        )
+    errors = payload.get("errors")
+    if isinstance(errors, list) and errors and isinstance(errors[0], dict):
+        return errors[0].get("code"), errors[0].get("message"), None
+    return None, None, None
+
+
+def _error_from_response(resp: httpx.Response, path: str) -> XmemoryAPIError:
+    """Build a structured :class:`XmemoryAPIError` from an error response."""
+    code: str | None = None
+    message: str | None = None
+    details: dict[str, Any] | None = None
+    try:
+        if resp.text:
+            code, message, details = _structured_error(resp.json())
+    except Exception:
+        pass
+    if message is None:
+        msg = "HTTP " + str(resp.status_code)
+        detail = resp.text.strip() if resp.text else None
+        if detail:
+            msg = msg + " — " + detail
+    else:
+        msg = path + " failed: " + message
+    return XmemoryAPIError(msg, status=resp.status_code, code=code, details=details)
+
+
 class SyncTransport:
     """Synchronous HTTP transport with ApiResponse wrapper handling."""
 
@@ -29,23 +73,9 @@ class SyncTransport:
         payload = resp.json() if resp.text else {}
         parsed = _RawApiResponse.model_validate(payload)
         if parsed.errors:
-            raise XmemoryAPIError(path + " failed: " + parsed.errors[0].message, status=resp.status_code)
+            err = parsed.errors[0]
+            raise XmemoryAPIError(path + " failed: " + err.message, status=resp.status_code, code=err.code)
         return parsed
-
-    def _parse_err(self, resp: httpx.Response, path: str) -> str:
-        """Build an error message from the response, preferring structured errors."""
-        try:
-            if resp.text:
-                parsed = _RawApiResponse.model_validate(resp.json())
-                if parsed.errors:
-                    return path + " failed: " + parsed.errors[0].message
-        except Exception:
-            pass
-        msg = "HTTP " + str(resp.status_code)
-        detail = resp.text.strip() if resp.text else None
-        if detail:
-            msg = msg + " — " + detail
-        return msg
 
     def request(
         self,
@@ -67,7 +97,7 @@ class SyncTransport:
         except XmemoryAPIError:
             raise
         except httpx.HTTPStatusError as e:
-            raise XmemoryAPIError(self._parse_err(e.response, path), status=e.response.status_code) from e
+            raise _error_from_response(e.response, path) from e
         except httpx.ConnectError as e:
             raise XmemoryAPIError("Connection error: " + str(e)) from e
         except Exception as e:
@@ -130,23 +160,9 @@ class AsyncTransport:
         payload = resp.json() if resp.text else {}
         parsed = _RawApiResponse.model_validate(payload)
         if parsed.errors:
-            raise XmemoryAPIError(path + " failed: " + parsed.errors[0].message, status=resp.status_code)
+            err = parsed.errors[0]
+            raise XmemoryAPIError(path + " failed: " + err.message, status=resp.status_code, code=err.code)
         return parsed
-
-    def _parse_err(self, resp: httpx.Response, path: str) -> str:
-        """Build an error message from the response, preferring structured errors."""
-        try:
-            if resp.text:
-                parsed = _RawApiResponse.model_validate(resp.json())
-                if parsed.errors:
-                    return path + " failed: " + parsed.errors[0].message
-        except Exception:
-            pass
-        msg = "HTTP " + str(resp.status_code)
-        detail = resp.text.strip() if resp.text else None
-        if detail:
-            msg = msg + " — " + detail
-        return msg
 
     async def request(
         self,
@@ -168,7 +184,7 @@ class AsyncTransport:
         except XmemoryAPIError:
             raise
         except httpx.HTTPStatusError as e:
-            raise XmemoryAPIError(self._parse_err(e.response, path), status=e.response.status_code) from e
+            raise _error_from_response(e.response, path) from e
         except httpx.ConnectError as e:
             raise XmemoryAPIError("Connection error: " + str(e)) from e
         except Exception as e:
