@@ -87,7 +87,6 @@ class WriteResult(BaseModel):
     write_id: str
     trace_id: str | None = None
     cleaned_objects: Any = None
-    diff_plan: Any = None
 
 
 class AsyncWriteResult(BaseModel):
