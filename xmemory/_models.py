@@ -272,9 +272,34 @@ class _GenerateSchemaRequest(BaseModel):
     current_yml_schema: str | dict[str, Any] | None = None
 
 
+class ScopeObject(BaseModel):
+    """One concrete object a scoped read is allowed to touch.
+
+    Identify the object by its ``type`` (PascalCase class name or snake_case
+    table name) plus EITHER its ``xuid`` OR its user-defined primary key
+    (``key``: a mapping of primary-key field name to value).
+    """
+
+    type: str
+    xuid: str | None = None
+    key: dict[str, str | int | float | bool] | None = None
+
+
+class ReadScope(BaseModel):
+    """A read's scope: the concrete objects it may touch, plus relation opt-in.
+
+    ``include_relations`` (off by default) also exposes the relations among the
+    in-scope ``objects``.
+    """
+
+    objects: list[ScopeObject]
+    include_relations: bool = False
+
+
 class _ReadRequest(BaseModel):
     query: str
     mode: ReadMode = ReadMode.SINGLE_ANSWER
+    scope: ReadScope | None = None
     read_id: str | None = None
 
 
