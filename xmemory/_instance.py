@@ -10,7 +10,6 @@ from xmemory._models import (
     ReadMode,
     ReadResult,
     ReadScope,
-    ScopeObject,
     WriteResult,
     WriteStatusResult,
     _ExtractRequest,
