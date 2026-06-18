@@ -62,7 +62,7 @@ class InstanceAPI:
 
         Pass ``scope`` (a :class:`ReadScope` of concrete :class:`ScopeObject`\\ s,
         each identified by xuid or user-defined primary key) to restrict the read;
-        set ``ReadScope.include_relations`` to also expose relations among them.
+        set ``ReadScope.relations_scope='all_relations'`` to also expose relations among them.
         """
         return self._t.request_one(
             "POST", f"/instances/{self._id}/read", ReadResult,
@@ -244,7 +244,7 @@ class AsyncInstanceAPI:
 
         Pass ``scope`` (a :class:`ReadScope` of concrete :class:`ScopeObject`\\ s,
         each identified by xuid or user-defined primary key) to restrict the read;
-        set ``ReadScope.include_relations`` to also expose relations among them.
+        set ``ReadScope.relations_scope='all_relations'`` to also expose relations among them.
         """
         return await self._t.request_one(
             "POST", f"/instances/{self._id}/read", ReadResult,

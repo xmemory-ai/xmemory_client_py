@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_serializer, model_validator
 
 
 # ---------------------------------------------------------------------------
@@ -278,22 +278,36 @@ class ScopeObject(BaseModel):
     Identify the object by its ``type`` (PascalCase class name or snake_case
     table name) plus EITHER its ``xuid`` OR its user-defined primary key
     (``key``: a mapping of primary-key field name to value).
+
+    Serialized to the API's identity-ADT wire shape — ``{"type": ...,
+    "key": {"xuid": ...}}`` or ``{"type": ..., "key": {"key": {...}}}``.
     """
 
     type: str
     xuid: str | None = None
     key: dict[str, str | int | float | bool] | None = None
 
+    @model_validator(mode="after")
+    def _exactly_one_identity(self) -> ScopeObject:
+        if (self.xuid is None) == (self.key is None):
+            raise ValueError("ScopeObject needs exactly one of 'xuid' or 'key'.")
+        return self
+
+    @model_serializer
+    def _serialize(self) -> dict[str, Any]:
+        identity = {"xuid": self.xuid} if self.xuid is not None else {"key": self.key}
+        return {"type": self.type, "key": identity}
+
 
 class ReadScope(BaseModel):
-    """A read's scope: the concrete objects it may touch, plus relation opt-in.
+    """A read's scope: the concrete objects it may touch, plus relation policy.
 
-    ``include_relations`` (off by default) also exposes the relations among the
-    in-scope ``objects``.
+    ``relations_scope`` is ``no_relations`` (objects only) by default;
+    ``all_relations`` also exposes the relations among the in-scope ``objects``.
     """
 
     objects: list[ScopeObject]
-    include_relations: bool = False
+    relations_scope: Literal["no_relations", "all_relations"] = "no_relations"
 
 
 class _ReadRequest(BaseModel):
