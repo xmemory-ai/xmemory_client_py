@@ -432,7 +432,7 @@ def test_scope_serializes_to_canonical_wire_shape() -> None:
     scope = ReadScope(
         objects=[
             ScopeObject(type="Person", key={"name": "Alice"}),
-            ScopeObject(type="Pet", xuid="550e8400-e29b-41d4-a716-446655440000"),
+            ScopeObject(type="Pet", key={"name": "Rex"}),
         ],
         relations_scope="all_relations",
     )
@@ -442,7 +442,7 @@ def test_scope_serializes_to_canonical_wire_shape() -> None:
     assert body["scope"] == {
         "objects": [
             {"type": "Person", "key": {"key": {"name": "Alice"}}},
-            {"type": "Pet", "key": {"xuid": "550e8400-e29b-41d4-a716-446655440000"}},
+            {"type": "Pet", "key": {"key": {"name": "Rex"}}},
         ],
         "relations_scope": "all_relations",
     }
@@ -454,10 +454,10 @@ def test_scope_defaults_to_no_relations() -> None:
     assert ReadScope(objects=[ScopeObject(type="Person", key={"name": "Bob"})]).relations_scope == "no_relations"
 
 
-def test_scope_object_requires_exactly_one_identity() -> None:
+def test_scope_object_requires_a_non_empty_key() -> None:
     from xmemory import ScopeObject
 
     with pytest.raises(Exception):
-        ScopeObject(type="Person")
+        ScopeObject(type="Person")  # type: ignore[call-arg]  # key is required
     with pytest.raises(Exception):
-        ScopeObject(type="Person", xuid="x", key={"name": "Alice"})
+        ScopeObject(type="Person", key={})

@@ -60,7 +60,7 @@ class InstanceAPI:
         """Query this instance and return a structured answer.
 
         Pass ``scope`` (a :class:`ReadScope` of concrete :class:`ScopeObject`\\ s,
-        each identified by xuid or user-defined primary key) to restrict the read;
+        each identified by its user-defined primary key) to restrict the read;
         set ``ReadScope.relations_scope='all_relations'`` to also expose relations among them.
         """
         return self._t.request_one(
@@ -242,7 +242,7 @@ class AsyncInstanceAPI:
         """Query this instance and return a structured answer.
 
         Pass ``scope`` (a :class:`ReadScope` of concrete :class:`ScopeObject`\\ s,
-        each identified by xuid or user-defined primary key) to restrict the read;
+        each identified by its user-defined primary key) to restrict the read;
         set ``ReadScope.relations_scope='all_relations'`` to also expose relations among them.
         """
         return await self._t.request_one(
