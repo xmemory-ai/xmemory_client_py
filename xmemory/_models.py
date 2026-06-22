@@ -137,6 +137,7 @@ class DescribeResult(BaseModel):
 
     instance_id: str
     instance_name: str
+    about: str = ""
     schema_summary: str
     tools: list[ToolDescription]
 
@@ -149,6 +150,8 @@ class DescribeResult(BaseModel):
         """
         lines: list[str] = []
         lines.append(f"Instance: {self.instance_name} ({self.instance_id})")
+        if self.about:
+            lines.append(f"\n{self.about}")
         if self.schema_summary:
             lines.append(f"\n{self.schema_summary}")
         lines.append("\nAvailable tools:\n")

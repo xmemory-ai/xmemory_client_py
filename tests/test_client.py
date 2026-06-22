@@ -242,6 +242,35 @@ def test_instance_read(httpx_mock, client):
     assert b'"mode":"single-answer"' in route.calls.last.request.content
 
 
+def test_instance_describe_exposes_about(httpx_mock, client):
+    route = httpx_mock.get(f"/instances/{INSTANCE_ID}/describe").mock(return_value=httpx.Response(200, json=_api_ok([
+        {
+            "instance_id": INSTANCE_ID,
+            "instance_name": "Test Instance",
+            "about": "xmemory is a first-party memory store.",
+            "schema_summary": "",
+            "tools": [],
+        },
+    ])))
+
+    result = client.instance(INSTANCE_ID).describe()
+
+    assert result.about == "xmemory is a first-party memory store."
+    assert "xmemory is a first-party memory store." in result.as_text()
+    assert route.called
+
+
+def test_instance_describe_about_defaults_when_absent(httpx_mock, client):
+    """A response from an older server without ``about`` still parses."""
+    httpx_mock.get(f"/instances/{INSTANCE_ID}/describe").mock(return_value=httpx.Response(200, json=_api_ok([
+        {"instance_id": INSTANCE_ID, "instance_name": "Test Instance", "schema_summary": "", "tools": []},
+    ])))
+
+    result = client.instance(INSTANCE_ID).describe()
+
+    assert result.about == ""
+
+
 def test_instance_write(httpx_mock, client):
     route = httpx_mock.post(f"/instances/{INSTANCE_ID}/write").mock(return_value=httpx.Response(200, json=_api_ok([
         {"write_id": "w-1", "trace_id": "ew-1", "cleaned_objects": []},
