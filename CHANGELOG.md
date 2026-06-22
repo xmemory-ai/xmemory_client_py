@@ -2,6 +2,14 @@
 
 All notable changes to `xmemory-ai` are documented here.
 
+## 0.7.1
+
+### Added
+
+- `DescribeResult.about` — the describe endpoint's first-party-positioning
+  string is now parsed and exposed, and surfaced in `as_text()`. Defaults to
+  `""` when an older server omits it.
+
 ## 0.7.0
 
 Adds **scoped reads**. This release is purely additive — existing `read()`
