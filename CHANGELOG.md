@@ -2,6 +2,23 @@
 
 All notable changes to `xmemory-ai` are documented here.
 
+## 0.7.0
+
+Adds **scoped reads**. This release is purely additive — existing `read()`
+callers are unchanged.
+
+### Added — instance (`client.instance(id)`)
+
+- `read(...)` accepts an optional `scope=ReadScope(...)` to restrict the read to
+  a set of concrete objects. Each object is named by a `ScopeObject(type=...,
+  key={...})` identifying it by its user-defined primary key. By default only
+  those objects are in scope; set `ReadScope.relations_scope="all_relations"` to
+  also expose the relations among them.
+
+### Added — DTOs (re-exported from `xmemory`)
+
+- `ReadScope` and `ScopeObject`.
+
 ## 0.6.1
 
 ### Fixed
