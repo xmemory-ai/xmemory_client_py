@@ -149,6 +149,46 @@ from xmemory import ReadMode
 result = inst.read("Show people and companies", read_mode=ReadMode.XRESPONSE)
 ```
 
+#### Scoped reads
+
+By default a read may draw on any object in the instance. Pass a `scope` to
+restrict it to a specific set of concrete objects — each named by its `type`
+plus its user-defined primary `key`:
+
+```python
+from xmemory import ReadScope, ScopeObject
+
+result = inst.read(
+    "What do these people do?",
+    scope=ReadScope(
+        objects=[
+            ScopeObject(type="Person", key={"name": "Alice"}),
+            ScopeObject(type="Person", key={"name": "Bob"}),
+        ],
+    ),
+)
+```
+
+Only the listed objects are in scope. To also expose the relations among them,
+set `relations_scope="all_relations"` (the default is `"no_relations"`):
+
+```python
+result = inst.read(
+    "How are these people connected?",
+    scope=ReadScope(
+        objects=[
+            ScopeObject(type="Person", key={"name": "Alice"}),
+            ScopeObject(type="Company", key={"name": "Acme"}),
+        ],
+        relations_scope="all_relations",
+    ),
+)
+```
+
+Each `ScopeObject` is identified by its **user-defined primary key** (the same
+field name(s) used in your schema), not an internal id. `key` must contain at
+least one field. Scoped reads compose with `read_mode`.
+
 #### Extraction logic
 
 ```python
