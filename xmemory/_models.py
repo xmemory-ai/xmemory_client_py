@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_serializer, model_validator
 
 
 # ---------------------------------------------------------------------------
@@ -272,9 +272,45 @@ class _GenerateSchemaRequest(BaseModel):
     current_yml_schema: str | dict[str, Any] | None = None
 
 
+class ScopeObject(BaseModel):
+    """One concrete object a scoped read is allowed to touch.
+
+    Identify the object by its ``type`` (PascalCase class name or snake_case
+    table name) plus its user-defined primary ``key`` (a mapping of primary-key
+    field name to value).
+
+    Serialized to the API's identity wire shape — ``{"type": ..., "key": {"key": {...}}}``.
+    """
+
+    type: str
+    key: dict[str, str | int | float | bool]
+
+    @model_validator(mode="after")
+    def _non_empty_key(self) -> ScopeObject:
+        if not self.key:
+            raise ValueError("ScopeObject 'key' must contain at least one primary-key field.")
+        return self
+
+    @model_serializer
+    def _serialize(self) -> dict[str, Any]:
+        return {"type": self.type, "key": {"key": self.key}}
+
+
+class ReadScope(BaseModel):
+    """A read's scope: the concrete objects it may touch, plus relation policy.
+
+    ``relations_scope`` is ``no_relations`` (objects only) by default;
+    ``all_relations`` also exposes the relations among the in-scope ``objects``.
+    """
+
+    objects: list[ScopeObject]
+    relations_scope: Literal["no_relations", "all_relations"] = "no_relations"
+
+
 class _ReadRequest(BaseModel):
     query: str
     mode: ReadMode = ReadMode.SINGLE_ANSWER
+    scope: ReadScope | None = None
     read_id: str | None = None
 
 

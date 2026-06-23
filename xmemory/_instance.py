@@ -9,6 +9,7 @@ from xmemory._models import (
     InstanceSchemaInfo,
     ReadMode,
     ReadResult,
+    ReadScope,
     WriteResult,
     WriteStatusResult,
     _ExtractRequest,
@@ -52,13 +53,19 @@ class InstanceAPI:
         query: str,
         *,
         read_mode: ReadMode = ReadMode.SINGLE_ANSWER,
+        scope: ReadScope | None = None,
         read_id: str | None = None,
         timeout: float | None = None,
     ) -> ReadResult:
-        """Query this instance and return a structured answer."""
+        """Query this instance and return a structured answer.
+
+        Pass ``scope`` (a :class:`ReadScope` of concrete :class:`ScopeObject`\\ s,
+        each identified by its user-defined primary key) to restrict the read;
+        set ``ReadScope.relations_scope='all_relations'`` to also expose relations among them.
+        """
         return self._t.request_one(
             "POST", f"/instances/{self._id}/read", ReadResult,
-            body=_ReadRequest(query=query, mode=read_mode, read_id=read_id),
+            body=_ReadRequest(query=query, mode=read_mode, scope=scope, read_id=read_id),
             timeout=timeout,
         )
 
@@ -228,13 +235,19 @@ class AsyncInstanceAPI:
         query: str,
         *,
         read_mode: ReadMode = ReadMode.SINGLE_ANSWER,
+        scope: ReadScope | None = None,
         read_id: str | None = None,
         timeout: float | None = None,
     ) -> ReadResult:
-        """Query this instance and return a structured answer."""
+        """Query this instance and return a structured answer.
+
+        Pass ``scope`` (a :class:`ReadScope` of concrete :class:`ScopeObject`\\ s,
+        each identified by its user-defined primary key) to restrict the read;
+        set ``ReadScope.relations_scope='all_relations'`` to also expose relations among them.
+        """
         return await self._t.request_one(
             "POST", f"/instances/{self._id}/read", ReadResult,
-            body=_ReadRequest(query=query, mode=read_mode, read_id=read_id),
+            body=_ReadRequest(query=query, mode=read_mode, scope=scope, read_id=read_id),
             timeout=timeout,
         )
 

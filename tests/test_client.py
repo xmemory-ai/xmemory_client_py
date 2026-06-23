@@ -422,3 +422,42 @@ async def test_async_create_instance_returns_async_instance_api(httpx_mock, asyn
 
     assert inst.id == INSTANCE_ID
     assert route.called
+
+
+def test_scope_serializes_to_canonical_wire_shape() -> None:
+    """ReadScope/ScopeObject must emit the API's identity-ADT + relations_scope shape."""
+    from xmemory import ReadScope, ScopeObject
+    from xmemory._models import ReadMode, _ReadRequest
+
+    scope = ReadScope(
+        objects=[
+            ScopeObject(type="Person", key={"name": "Alice"}),
+            ScopeObject(type="Pet", key={"name": "Rex"}),
+        ],
+        relations_scope="all_relations",
+    )
+    body = _ReadRequest(query="q", mode=ReadMode.SINGLE_ANSWER, scope=scope).model_dump(
+        by_alias=True, exclude_none=True
+    )
+    assert body["scope"] == {
+        "objects": [
+            {"type": "Person", "key": {"key": {"name": "Alice"}}},
+            {"type": "Pet", "key": {"key": {"name": "Rex"}}},
+        ],
+        "relations_scope": "all_relations",
+    }
+
+
+def test_scope_defaults_to_no_relations() -> None:
+    from xmemory import ReadScope, ScopeObject
+
+    assert ReadScope(objects=[ScopeObject(type="Person", key={"name": "Bob"})]).relations_scope == "no_relations"
+
+
+def test_scope_object_requires_a_non_empty_key() -> None:
+    from xmemory import ScopeObject
+
+    with pytest.raises(Exception):
+        ScopeObject(type="Person")  # type: ignore[call-arg]  # key is required
+    with pytest.raises(Exception):
+        ScopeObject(type="Person", key={})
