@@ -2,6 +2,23 @@
 
 All notable changes to `xmemory-ai` are documented here.
 
+## 0.8.0
+
+Replaces the legacy `cleaned_objects` echo on the write response with the new
+`changes` summary.
+
+### Added
+
+- `WriteResult.changes` — the `/write` response's summary of what the write did,
+  grouped into `created` / `updated` / `removed`. Exposed as-is; defaults to
+  `None` when an older server omits it.
+
+### Removed
+
+- `WriteResult.cleaned_objects` — superseded by `changes`. The server still
+  returns the field to direct/SDK callers, but it is no longer parsed or
+  exposed. Read `changes` instead.
+
 ## 0.7.1
 
 ### Added

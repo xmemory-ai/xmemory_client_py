@@ -86,7 +86,9 @@ class ReadResult(BaseModel):
 class WriteResult(BaseModel):
     write_id: str
     trace_id: str | None = None
-    cleaned_objects: Any = None
+    # What the write did, grouped into ``created`` / ``updated`` / ``removed``.
+    # Absent (``None``) on responses from an older server.
+    changes: Any = None
 
 
 class AsyncWriteResult(BaseModel):
