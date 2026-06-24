@@ -273,12 +273,24 @@ def test_instance_describe_about_defaults_when_absent(httpx_mock, client):
 
 def test_instance_write(httpx_mock, client):
     route = httpx_mock.post(f"/instances/{INSTANCE_ID}/write").mock(return_value=httpx.Response(200, json=_api_ok([
-        {"write_id": "w-1", "trace_id": "ew-1", "cleaned_objects": []},
+        {
+            "write_id": "w-1",
+            "trace_id": "ew-1",
+            "cleaned_objects": [],
+            "changes": {
+                "created": {"objects": [{"name": "Person", "identifier": "name='Bob'", "fields": []}], "relations": []},
+                "updated": [],
+                "removed": {"objects": [], "relations": []},
+            },
+        },
     ])))
 
     resp = client.instance(INSTANCE_ID).write("Bob is an engineer.")
 
     assert resp.write_id == "w-1"
+    assert resp.changes["created"]["objects"][0]["identifier"] == "name='Bob'"
+    # ``cleaned_objects`` is no longer exposed even though the server still sends it.
+    assert not hasattr(resp, "cleaned_objects")
     assert route.called
     assert b'"text":"Bob is an engineer."' in route.calls.last.request.content
     assert b'"extraction_logic":"fast"' in route.calls.last.request.content
