@@ -280,7 +280,7 @@ def test_instance_write(httpx_mock, client):
             "changes": {
                 "created": {"objects": [{"name": "Person", "identifier": "name='Bob'", "fields": []}], "relations": []},
                 "updated": [],
-                "removed": {"objects": [], "relations": []},
+                "deleted": {"objects": [], "relations": []},
             },
         },
     ])))

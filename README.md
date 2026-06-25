@@ -130,7 +130,7 @@ print(result.reader_result)
 
 # Write (synchronous)
 result = inst.write("Bob joined the team on Monday as a designer.")
-print(result.changes)  # what the write created / updated / removed
+print(result.changes)  # what the write created / updated / deleted
 
 # Write (async job)
 job = inst.write_async("Bob joined the team on Monday as a designer.")

@@ -86,7 +86,7 @@ class ReadResult(BaseModel):
 class WriteResult(BaseModel):
     write_id: str
     trace_id: str | None = None
-    # What the write did, grouped into ``created`` / ``updated`` / ``removed``.
+    # What the write did, grouped into ``created`` / ``updated`` / ``deleted``.
     # Absent (``None``) on responses from an older server.
     changes: Any = None
 
