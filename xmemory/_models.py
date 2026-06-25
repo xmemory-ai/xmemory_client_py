@@ -19,7 +19,6 @@ class SchemaType(Enum):
 
 class ExtractionLogic(str, Enum):
     FAST = "fast"
-    REGULAR = "regular"
     DEEP = "deep"
 
 
