@@ -2,6 +2,40 @@
 
 All notable changes to `xmemory-ai` are documented here.
 
+## 0.9.0
+
+Surfaces the accounts API's new account/billing and rate-limit error contract.
+The client stays status-agnostic, but now carries the discriminating `code`,
+the structured `details`, and the `Retry-After` header all the way to callers.
+
+### Added
+
+- `XmemoryAPIError.retry_after` — the HTTP `Retry-After` response header parsed
+  to a non-negative `int` number of seconds (delta-seconds form), or `None` when
+  the server did not send one (or sent an HTTP-date). A negative delta is clamped
+  to `0`, so `time.sleep(e.retry_after or 1)` never raises. Populated for
+  resettable `QUOTA_EXCEEDED` (402) and `RATE_LIMITED` (429) responses. The
+  library does **not** retry automatically — it only surfaces the value.
+
+### Fixed
+
+- `XmemoryAPIError.details` is now populated for the standard
+  `{"errors": [{"code", "message", "details"}]}` envelope. Previously the
+  transport dropped `details` for this shape and only propagated it for the
+  schema-evolution `{"status": "error", "error_type", ...}` payload. This is how
+  the new `402 QUOTA_EXCEEDED` quota metadata —
+  `details.kind` (`daily_quota_exceeded` / `monthly_quota_exceeded`) and
+  `details.retry_after_seconds` — reaches callers.
+
+### Notes — accounts error contract
+
+`402 Payment Required` now means two different things, discriminated by `code`,
+never by the bare status: `QUOTA_EXCEEDED` (plan/usage allowance exhausted,
+non-retryable) and `TRIAL_ENDED` (trial over / subscription lapsed,
+non-retryable). Genuine velocity limits are now `429 RATE_LIMITED` (retryable
+with backoff, honoring `Retry-After`) — quota is no longer a 429. Branch on
+`code`, not on HTTP status. See the README "Error handling" section.
+
 ## 0.8.0
 
 Replaces the legacy `cleaned_objects` echo on the write response with the new
