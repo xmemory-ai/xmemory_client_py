@@ -74,7 +74,7 @@ asyncio.run(main())
 
 | Parameter     | Env var           | Default                    | Description                        |
 |---------------|-------------------|----------------------------|------------------------------------|
-| `url`         | `XMEM_API_URL`    | `https://api.xmemory.ai`   | Base URL of the Xmemory API        |
+| `url`         | `XMEM_API_URL`    | `https://api.xmemory.ai`   | Base URL of the xmemory API        |
 | `api_key`     | `XMEM_API_KEY`    | `None`                     | API key for authentication         |
 | `timeout`     | —                 | `60`                       | Default request timeout in seconds |
 
