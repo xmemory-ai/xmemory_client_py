@@ -1,7 +1,7 @@
 [project]
 name = "xmemory-ai"
-version = "0.9.0"
-description = "Python client library for the Xmemory API"
+version = "0.9.1"
+description = "Python client library for the xmemory API"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Proprietary" }
