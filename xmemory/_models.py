@@ -343,6 +343,7 @@ class _ApiError(BaseModel):
     message: str
     field: str | None = None
     resource_id: str | None = None
+    details: dict[str, Any] | None = None
 
 
 class _RawApiResponse(BaseModel):

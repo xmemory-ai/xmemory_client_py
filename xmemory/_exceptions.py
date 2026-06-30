@@ -12,7 +12,11 @@ class XmemoryAPIError(Exception):
     (e.g. ``"stale_proposal_version"``, ``"dependency_closure_failed"``,
     ``"destructive_confirmation_required"``). ``details`` carries the optional
     structured ``details`` object the server attaches to some errors. Pattern
-    match on ``code`` rather than parsing the message string.
+    match on ``code`` rather than parsing the message string (the same HTTP
+    status can carry different codes — e.g. ``402`` is both ``"QUOTA_EXCEEDED"``
+    and ``"TRIAL_ENDED"``). ``retry_after`` is populated only when the server
+    sent a ``Retry-After`` response header in delta-seconds form (clamped to
+    ``>= 0``); the HTTP-date form yields ``None``.
     """
 
     def __init__(
@@ -22,11 +26,13 @@ class XmemoryAPIError(Exception):
         status: int | None = None,
         code: str | None = None,
         details: dict[str, Any] | None = None,
+        retry_after: int | None = None,
     ):
         super().__init__(message)
         self.status = status
         self.code = code
         self.details = details
+        self.retry_after = retry_after
 
 
 class XmemoryHealthCheckError(XmemoryAPIError):

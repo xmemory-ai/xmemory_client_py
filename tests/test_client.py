@@ -398,6 +398,31 @@ def test_api_error_from_errors_field_2xx(httpx_mock, client):
         client.admin.get_cluster(CLUSTER_ID)
 
 
+def test_api_error_from_errors_field_2xx_surfaces_details_and_retry_after(httpx_mock, client):
+    """A 200 wrapper-body error still surfaces structured ``details`` and the
+    HTTP ``Retry-After`` header on the raised error (the ``_parse`` path, not the
+    non-2xx ``raise_for_status`` path)."""
+    httpx_mock.get(f"/clusters/{CLUSTER_ID}").mock(return_value=httpx.Response(
+        200,
+        json={
+            "ids": [], "items": [],
+            "errors": [{
+                "code": "QUOTA_EXCEEDED",
+                "message": "Daily token quota exhausted.",
+                "details": {"kind": "daily_quota_exceeded", "retry_after_seconds": 3600},
+            }],
+        },
+        headers={"Retry-After": "3600"},
+    ))
+
+    with pytest.raises(XmemoryAPIError) as exc:
+        client.admin.get_cluster(CLUSTER_ID)
+
+    assert exc.value.code == "QUOTA_EXCEEDED"
+    assert exc.value.details == {"kind": "daily_quota_exceeded", "retry_after_seconds": 3600}
+    assert exc.value.retry_after == 3600
+
+
 def test_api_error_from_errors_field_non_2xx(httpx_mock, client):
     """Structured errors in a non-2xx response body are preferred over raw HTTP text."""
     httpx_mock.get(f"/clusters/{CLUSTER_ID}").mock(return_value=httpx.Response(404, json={
@@ -425,6 +450,95 @@ def test_api_error_empty_items(httpx_mock, client):
 
     with pytest.raises(XmemoryAPIError, match="returned no items"):
         client.admin.get_instance(INSTANCE_ID)
+
+
+def test_quota_exceeded_402_surfaces_code_details_and_retry_after(httpx_mock, client):
+    """402 QUOTA_EXCEEDED carries kind/retry_after_seconds in ``details`` and the
+    HTTP ``Retry-After`` header is surfaced on ``retry_after``. Non-retryable —
+    callers branch on ``code``, not the bare 402 status."""
+    httpx_mock.get(f"/instances/{INSTANCE_ID}/schema").mock(return_value=httpx.Response(
+        402,
+        json={"errors": [{
+            "code": "QUOTA_EXCEEDED",
+            "message": "Daily token quota exhausted.",
+            "details": {"kind": "daily_quota_exceeded", "retry_after_seconds": 3600},
+        }]},
+        headers={"Retry-After": "3600"},
+    ))
+
+    with pytest.raises(XmemoryAPIError) as exc:
+        client.admin.get_instance_schema(INSTANCE_ID)
+
+    assert exc.value.status == 402
+    assert exc.value.code == "QUOTA_EXCEEDED"
+    assert exc.value.details == {"kind": "daily_quota_exceeded", "retry_after_seconds": 3600}
+    assert exc.value.retry_after == 3600
+
+
+def test_trial_ended_402_surfaces_code_without_details(httpx_mock, client):
+    """402 TRIAL_ENDED may carry no ``details`` (paywall-gate variant). Still
+    distinguishable from QUOTA_EXCEEDED via ``code``."""
+    httpx_mock.get(f"/clusters/{CLUSTER_ID}").mock(return_value=httpx.Response(
+        402,
+        json={"errors": [{"code": "TRIAL_ENDED", "message": "Trial has ended."}]},
+    ))
+
+    with pytest.raises(XmemoryAPIError) as exc:
+        client.admin.get_cluster(CLUSTER_ID)
+
+    assert exc.value.status == 402
+    assert exc.value.code == "TRIAL_ENDED"
+    assert exc.value.details is None
+    assert exc.value.retry_after is None
+
+
+def test_rate_limited_429_surfaces_code_and_retry_after(httpx_mock, client):
+    """429 RATE_LIMITED is the genuine velocity limit (retryable with backoff);
+    its ``Retry-After`` header is surfaced on ``retry_after``."""
+    httpx_mock.get("/clusters").mock(return_value=httpx.Response(
+        429,
+        json={"errors": [{"code": "RATE_LIMITED", "message": "Too many requests."}]},
+        headers={"Retry-After": "5"},
+    ))
+
+    with pytest.raises(XmemoryAPIError) as exc:
+        client.admin.list_clusters()
+
+    assert exc.value.status == 429
+    assert exc.value.code == "RATE_LIMITED"
+    assert exc.value.retry_after == 5
+
+
+def test_rate_limited_429_negative_retry_after_clamped_to_zero(httpx_mock, client):
+    """A negative ``Retry-After`` (e.g. clock skew) is clamped to 0, not passed
+    through — callers can back off by ``retry_after`` without going negative."""
+    httpx_mock.get("/clusters").mock(return_value=httpx.Response(
+        429,
+        json={"errors": [{"code": "RATE_LIMITED", "message": "Too many requests."}]},
+        headers={"Retry-After": "-5"},
+    ))
+
+    with pytest.raises(XmemoryAPIError) as exc:
+        client.admin.list_clusters()
+
+    assert exc.value.status == 429
+    assert exc.value.retry_after == 0
+
+
+def test_rate_limited_429_http_date_retry_after_yields_none(httpx_mock, client):
+    """The HTTP-date form of ``Retry-After`` is not parsed to an int; only the
+    delta-seconds form populates ``retry_after`` (date form yields ``None``)."""
+    httpx_mock.get("/clusters").mock(return_value=httpx.Response(
+        429,
+        json={"errors": [{"code": "RATE_LIMITED", "message": "Too many requests."}]},
+        headers={"Retry-After": "Wed, 21 Oct 2015 07:28:00 GMT"},
+    ))
+
+    with pytest.raises(XmemoryAPIError) as exc:
+        client.admin.list_clusters()
+
+    assert exc.value.status == 429
+    assert exc.value.retry_after is None
 
 
 # ---------------------------------------------------------------------------

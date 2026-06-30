@@ -32,8 +32,28 @@ def _structured_error(payload: Any) -> tuple[str | None, str | None, dict[str, A
         )
     errors = payload.get("errors")
     if isinstance(errors, list) and errors and isinstance(errors[0], dict):
-        return errors[0].get("code"), errors[0].get("message"), None
+        details = errors[0].get("details")
+        return (
+            errors[0].get("code"),
+            errors[0].get("message"),
+            details if isinstance(details, dict) else None,
+        )
     return None, None, None
+
+
+def _retry_after_seconds(resp: httpx.Response) -> int | None:
+    """Parse the integer ``Retry-After`` response header (seconds), if present.
+
+    Only the delta-seconds form is recognised; an HTTP-date value yields
+    ``None``. The server sends this on resettable rate-limit / quota responses.
+    """
+    raw = resp.headers.get("Retry-After")
+    if raw is None:
+        return None
+    try:
+        return max(0, int(raw.strip()))
+    except (TypeError, ValueError):
+        return None
 
 
 def _error_from_response(resp: httpx.Response, path: str) -> XmemoryAPIError:
@@ -53,7 +73,13 @@ def _error_from_response(resp: httpx.Response, path: str) -> XmemoryAPIError:
             msg = msg + " — " + detail
     else:
         msg = path + " failed: " + message
-    return XmemoryAPIError(msg, status=resp.status_code, code=code, details=details)
+    return XmemoryAPIError(
+        msg,
+        status=resp.status_code,
+        code=code,
+        details=details,
+        retry_after=_retry_after_seconds(resp),
+    )
 
 
 class SyncTransport:
@@ -74,7 +100,13 @@ class SyncTransport:
         parsed = _RawApiResponse.model_validate(payload)
         if parsed.errors:
             err = parsed.errors[0]
-            raise XmemoryAPIError(path + " failed: " + err.message, status=resp.status_code, code=err.code)
+            raise XmemoryAPIError(
+                path + " failed: " + err.message,
+                status=resp.status_code,
+                code=err.code,
+                details=err.details,
+                retry_after=_retry_after_seconds(resp),
+            )
         return parsed
 
     def request(
@@ -161,7 +193,13 @@ class AsyncTransport:
         parsed = _RawApiResponse.model_validate(payload)
         if parsed.errors:
             err = parsed.errors[0]
-            raise XmemoryAPIError(path + " failed: " + err.message, status=resp.status_code, code=err.code)
+            raise XmemoryAPIError(
+                path + " failed: " + err.message,
+                status=resp.status_code,
+                code=err.code,
+                details=err.details,
+                retry_after=_retry_after_seconds(resp),
+            )
         return parsed
 
     async def request(
