@@ -2,6 +2,26 @@
 
 All notable changes to `xmemory-ai` are documented here.
 
+## 0.10.0
+
+Surfaces per-sub-query answers from the reader's question decomposition. When
+the server splits a composite query (several independent questions in one
+`read`) into sub-queries, the response now carries one answer per sub-query
+alongside the existing combined answer. Purely additive — existing callers that
+only read `reader_result` are unaffected.
+
+### Added
+
+- `ReadResult.reader_results` — a list of `TaggedReaderResult`, one entry per
+  sub-query the server decomposed the query into (a single-intent query yields
+  exactly one entry). `reader_result` stays the combined back-compat value (for
+  `single-answer` mode, a labelled multi-part string). The list is empty against
+  a server without question decomposition, or when it is disabled.
+- `TaggedReaderResult` — carries `sub_query` (the sub-question), `reader_result`
+  (its answer, in the requested read mode), and `error` (a user-safe message set
+  when that one sub-query could not be answered while the others still were;
+  `None` otherwise). Exported from the package root.
+
 ## 0.9.0
 
 Surfaces the accounts API's new account/billing and rate-limit error contract.

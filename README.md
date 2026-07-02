@@ -149,6 +149,21 @@ from xmemory import ReadMode
 result = inst.read("Show people and companies", read_mode=ReadMode.XRESPONSE)
 ```
 
+#### Composite queries
+
+When a query bundles several independent questions, the server may decompose it
+into sub-queries and answer each one. `reader_result` is still the combined
+answer (for `single-answer` mode, a labelled multi-part string); `reader_results`
+holds one `TaggedReaderResult` (`sub_query`, `reader_result`, `error`) per
+sub-query so you can read each answer unambiguously. A single-intent query yields
+one entry, and the list is empty against a server without question decomposition.
+
+```python
+result = inst.read("Who leads sales, and where is HQ?")
+for part in result.reader_results:
+    print(part.sub_query, "->", part.error or part.reader_result)
+```
+
 #### Scoped reads
 
 By default a read may draw on any object in the instance. Pass a `scope` to

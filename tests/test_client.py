@@ -237,9 +237,31 @@ def test_instance_read(httpx_mock, client):
     resp = client.instance(INSTANCE_ID).read("Who is Bob?")
 
     assert resp.reader_result == {"answer": "An engineer"}
+    assert resp.reader_results == []
     assert route.called
     assert b'"query":"Who is Bob?"' in route.calls.last.request.content
     assert b'"mode":"single-answer"' in route.calls.last.request.content
+
+
+def test_instance_read_decomposed(httpx_mock, client):
+    httpx_mock.post(f"/instances/{INSTANCE_ID}/read").mock(return_value=httpx.Response(200, json=_api_ok([
+        {
+            "trace_id": "r-1",
+            "reader_result": "combined answer",
+            "reader_results": [
+                {"sub_query": "Who is Bob?", "reader_result": "An engineer"},
+                {"sub_query": "Who is Ann?", "reader_result": "", "error": "no data"},
+            ],
+        },
+    ])))
+
+    resp = client.instance(INSTANCE_ID).read("Who are Bob and Ann?")
+
+    assert resp.reader_result == "combined answer"
+    assert [r.sub_query for r in resp.reader_results] == ["Who is Bob?", "Who is Ann?"]
+    assert resp.reader_results[0].reader_result == "An engineer"
+    assert resp.reader_results[0].error is None
+    assert resp.reader_results[1].error == "no data"
 
 
 def test_instance_describe_exposes_about(httpx_mock, client):
