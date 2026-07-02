@@ -77,9 +77,28 @@ class InstanceSchemaInfo(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+class TaggedReaderResult(BaseModel):
+    """One sub-query and its own answer, in the requested read mode.
+
+    Present in :attr:`ReadResult.reader_results` when the server decomposed a
+    composite query into independent sub-queries. ``error`` is a user-safe
+    message set when that sub-query could not be answered while the others still
+    were (partial tolerance); ``None`` otherwise.
+    """
+
+    sub_query: str
+    reader_result: Any = None
+    error: str | None = None
+
+
 class ReadResult(BaseModel):
     trace_id: str | None = None
     reader_result: Any = None
+    # Per-sub-query answers when the server decomposed the query into independent
+    # sub-queries. One entry per sub-query (a single-intent query yields exactly
+    # one); ``reader_result`` above stays the combined back-compat value. Empty
+    # from a server without question decomposition, or when it is disabled.
+    reader_results: list[TaggedReaderResult] = []
 
 
 class WriteResult(BaseModel):
