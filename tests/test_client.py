@@ -497,19 +497,19 @@ def test_quota_exceeded_402_surfaces_code_details_and_retry_after(httpx_mock, cl
     assert exc.value.retry_after == 3600
 
 
-def test_trial_ended_402_surfaces_code_without_details(httpx_mock, client):
-    """402 TRIAL_ENDED may carry no ``details`` (paywall-gate variant). Still
-    distinguishable from QUOTA_EXCEEDED via ``code``."""
+def test_402_without_details_surfaces_code_only(httpx_mock, client):
+    """A 402 that carries no ``details`` and no ``Retry-After`` still surfaces
+    its ``code`` — callers branch on ``code``, never on the bare status."""
     httpx_mock.get(f"/clusters/{CLUSTER_ID}").mock(return_value=httpx.Response(
         402,
-        json={"errors": [{"code": "TRIAL_ENDED", "message": "Trial has ended."}]},
+        json={"errors": [{"code": "QUOTA_EXCEEDED", "message": "Quota exhausted."}]},
     ))
 
     with pytest.raises(XmemoryAPIError) as exc:
         client.admin.get_cluster(CLUSTER_ID)
 
     assert exc.value.status == 402
-    assert exc.value.code == "TRIAL_ENDED"
+    assert exc.value.code == "QUOTA_EXCEEDED"
     assert exc.value.details is None
     assert exc.value.retry_after is None
 
