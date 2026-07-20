@@ -2,6 +2,16 @@
 
 All notable changes to `xmemory-ai` are documented here.
 
+## 0.10.1
+
+Documentation-only release: removes `402 TRIAL_ENDED` from the documented error
+contract. The server no longer emits it — trials were removed end-to-end — so
+`402 Payment Required` now means `QUOTA_EXCEEDED` only. No API or behavior
+change: `XmemoryAPIError.code` was always a passthrough of whatever the server
+sent, so nothing in the client ever special-cased `TRIAL_ENDED`. Callers still
+branch on `.code`, not the bare status. (The 0.9.0 note below stands as a record
+of the old contract.)
+
 ## 0.10.0
 
 Surfaces per-sub-query answers from the reader's question decomposition. When

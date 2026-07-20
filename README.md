@@ -416,23 +416,19 @@ except XmemoryAPIError as e:
 ```
 
 **Branch on `.code`, not on the HTTP status.** A single status can carry more
-than one meaning — `402 Payment Required` is returned for *both*
-`QUOTA_EXCEEDED` and `TRIAL_ENDED` — so the structured `.code` is the
-discriminator, never the bare status. Pattern match on `.code` rather than
-parsing the message string.
+than one meaning, so the structured `.code` is the discriminator, never the bare
+status. Pattern match on `.code` rather than parsing the message string.
 
 ### Account / billing & rate-limit codes
 
 | HTTP | `.code` | Meaning | Retryable? |
 |---|---|---|---|
 | 402 | `QUOTA_EXCEEDED` | Tenant exhausted its plan's daily/monthly token quota. | No |
-| 402 | `TRIAL_ENDED` | Trial over / subscription lapsed. | No |
 | 429 | `RATE_LIMITED` | Genuine velocity/rate limit. | Yes — back off and retry, honoring `.retry_after`. |
 
 For `QUOTA_EXCEEDED`, `details` carries `{"kind": "daily_quota_exceeded" | "monthly_quota_exceeded",
 "retry_after_seconds": int | None}`, and when the window is resettable the server also
-sends a `Retry-After` header (surfaced as `.retry_after`). `TRIAL_ENDED` may carry
-`details.kind == "trial_exceeded"`, or no `details` when raised by the paywall gate.
+sends a `Retry-After` header (surfaced as `.retry_after`).
 The library never retries automatically — it only surfaces these values for you to act on.
 
 ```python
@@ -444,9 +440,6 @@ except XmemoryAPIError as e:
     if e.code == "QUOTA_EXCEEDED":
         kind = (e.details or {}).get("kind")  # daily_quota_exceeded | monthly_quota_exceeded
         # Non-retryable: surface to the user; e.retry_after (seconds) hints when the window resets.
-        raise
-    elif e.code == "TRIAL_ENDED":
-        # Non-retryable: prompt the user to upgrade / renew their subscription.
         raise
     elif e.code == "RATE_LIMITED":
         # Retryable: back off, honoring e.retry_after if set, then retry.
