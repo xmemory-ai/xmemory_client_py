@@ -2,6 +2,15 @@
 
 All notable changes to `xmemory-ai` are documented here.
 
+## 0.11.0
+
+Licensing-only release: the client library is now MIT-licensed. Package
+metadata changes from `Proprietary` to `MIT`, and a `LICENSE` file ships in the
+sdist and wheel. The MIT grant covers this client library only — the xmemory
+service and the technology behind it stay proprietary to xmemory Inc., and use
+of the service remains governed by its Terms & Conditions. No API or behavior
+change.
+
 ## 0.10.1
 
 Documentation-only release: removes `402 TRIAL_ENDED` from the documented error

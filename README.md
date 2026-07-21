@@ -493,6 +493,13 @@ except XmemoryAPIError as e:
 | `inst.decide_suggestions()` | `DecideSuggestionsResult` |
 | `inst.apply_pending_decisions()` | `ApplyPendingDecisionsResult` |
 
+## License
+
+This client library is released under the [MIT license](LICENSE). The MIT grant
+covers this library only — the xmemory service it talks to and the technology
+behind it are proprietary to xmemory Inc., and using the service is governed by
+the [Terms & Conditions](https://xmemory.ai/terms-and-conditions.html).
+
 ## Package publishing to pip
 
 ```bash

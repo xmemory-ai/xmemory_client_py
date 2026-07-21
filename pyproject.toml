@@ -1,10 +1,11 @@
 [project]
 name = "xmemory-ai"
-version = "0.10.1"
+version = "0.11.0"
 description = "Python client library for the xmemory API"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "Proprietary" }
+license = "MIT"
+license-files = ["LICENSE"]
 dependencies = [
     "pydantic>=2.0",
     "httpx>=0.27",
@@ -20,7 +21,7 @@ dev = [
 ]
 
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
