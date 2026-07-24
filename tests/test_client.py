@@ -11,6 +11,7 @@ from xmemory import (
     AsyncXmemoryClient,
     InstanceAPI,
     ObjectCreate,
+    ObjectDelete,
     ObjectMutation,
     ObjectUpdate,
     RelationDelete,
@@ -384,7 +385,7 @@ def test_instance_write_structured_async(httpx_mock, client):
     )
 
     resp = client.instance(INSTANCE_ID).write_async(structured_mutations=[
-        ObjectMutation(object_type="person", delete={"key": {"email": "a@x.io"}}),
+        ObjectMutation(object_type="person", delete=ObjectDelete(key={"email": "a@x.io"})),
     ])
 
     assert resp.write_id == "w-async-2"
@@ -394,7 +395,7 @@ def test_instance_write_structured_async(httpx_mock, client):
 
 def test_write_rejects_bad_text_mutation_combinations(client):
     inst = client.instance(INSTANCE_ID)
-    mutation = ObjectMutation(object_type="person", delete={"key": {"email": "a@x.io"}})
+    mutation = ObjectMutation(object_type="person", delete=ObjectDelete(key={"email": "a@x.io"}))
 
     with pytest.raises(ValueError, match="exactly one of 'text' or 'structured_mutations'"):
         inst.write("some text", structured_mutations=[mutation])
@@ -410,7 +411,7 @@ def test_mutation_models_require_exactly_one_op():
     with pytest.raises(ValueError, match="exactly one of 'create', 'update', 'delete'"):
         ObjectMutation(object_type="person")
     with pytest.raises(ValueError, match="exactly one of 'create', 'update', 'delete'"):
-        ObjectMutation(object_type="person", create=ObjectCreate(), delete={"key": {"x": 1}})
+        ObjectMutation(object_type="person", create=ObjectCreate(), delete=ObjectDelete(key={"x": 1}))
     with pytest.raises(ValueError, match="exactly one of 'create', 'update', 'delete'"):
         RelationMutation(relation_type="works_at")
 
