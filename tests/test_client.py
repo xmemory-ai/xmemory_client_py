@@ -10,6 +10,12 @@ import respx
 from xmemory import (
     AsyncXmemoryClient,
     InstanceAPI,
+    ObjectCreate,
+    ObjectMutation,
+    ObjectUpdate,
+    RelationDelete,
+    RelationEndpoint,
+    RelationMutation,
     SchemaType,
     XmemoryAPIError,
     XmemoryClient,
@@ -327,6 +333,122 @@ def test_instance_write_async(httpx_mock, client):
 
     assert resp.write_id == "w-async-1"
     assert route.called
+
+
+def test_text_write_omits_structured_mutations_key(httpx_mock, client):
+    """Plain text writes must stay byte-identical: older servers reject unknown keys."""
+    route = httpx_mock.post(f"/instances/{INSTANCE_ID}/write").mock(
+        return_value=httpx.Response(200, json=_api_ok([{"write_id": "w-1"}])),
+    )
+
+    client.instance(INSTANCE_ID).write("Bob is an engineer.")
+
+    assert b"structured_mutations" not in route.calls.last.request.content
+
+
+def test_instance_write_structured(httpx_mock, client):
+    route = httpx_mock.post(f"/instances/{INSTANCE_ID}/write").mock(return_value=httpx.Response(200, json=_api_ok([
+        {
+            "write_id": "w-1",
+            "trace_id": "ew-1",
+            "changes": {
+                "created": {"objects": [{"name": "person", "identifier": "email='a@x.io'", "fields": []}], "relations": []},
+                "updated": [],
+                "deleted": {"objects": [], "relations": []},
+            },
+        },
+    ])))
+
+    resp = client.instance(INSTANCE_ID).write(structured_mutations=[
+        ObjectMutation(
+            object_type="person",
+            create=ObjectCreate(key={"email": "a@x.io"}, values={"name": "Alice"}),
+        ),
+        # A raw dict in the wire form is passed through untouched.
+        {"relation_mutation": {"relation_type": "works_at", "delete": {"endpoints": [], "allow_bulk_delete": True}}},
+    ])
+
+    assert resp.write_id == "w-1"
+    content = route.calls.last.request.content
+    assert b'"structured_mutations":[' in content
+    assert b'"object_mutation":{"object_type":"person","create":{"key":{"email":"a@x.io"},"values":{"name":"Alice"}}}' in content
+    assert b'"relation_mutation":{"relation_type":"works_at"' in content
+    assert b'"allow_bulk_delete":true' in content
+    # Unset op branches are dropped from the serialized mutations.
+    assert b'"update"' not in content
+
+
+def test_instance_write_structured_async(httpx_mock, client):
+    route = httpx_mock.post(f"/instances/{INSTANCE_ID}/write_async").mock(
+        return_value=httpx.Response(200, json=_api_ok([{"write_id": "w-async-2"}])),
+    )
+
+    resp = client.instance(INSTANCE_ID).write_async(structured_mutations=[
+        ObjectMutation(object_type="person", delete={"key": {"email": "a@x.io"}}),
+    ])
+
+    assert resp.write_id == "w-async-2"
+    content = route.calls.last.request.content
+    assert b'"object_mutation":{"object_type":"person","delete":{"key":{"email":"a@x.io"}}}' in content
+
+
+def test_write_rejects_bad_text_mutation_combinations(client):
+    inst = client.instance(INSTANCE_ID)
+    mutation = ObjectMutation(object_type="person", delete={"key": {"email": "a@x.io"}})
+
+    with pytest.raises(ValueError, match="exactly one of 'text' or 'structured_mutations'"):
+        inst.write("some text", structured_mutations=[mutation])
+    with pytest.raises(ValueError, match="exactly one of 'text' or 'structured_mutations'"):
+        inst.write()
+    with pytest.raises(ValueError, match="at least one mutation"):
+        inst.write(structured_mutations=[])
+    with pytest.raises(ValueError, match="at least one mutation"):
+        inst.write_async(structured_mutations=[])
+
+
+def test_mutation_models_require_exactly_one_op():
+    with pytest.raises(ValueError, match="exactly one of 'create', 'update', 'delete'"):
+        ObjectMutation(object_type="person")
+    with pytest.raises(ValueError, match="exactly one of 'create', 'update', 'delete'"):
+        ObjectMutation(object_type="person", create=ObjectCreate(), delete={"key": {"x": 1}})
+    with pytest.raises(ValueError, match="exactly one of 'create', 'update', 'delete'"):
+        RelationMutation(relation_type="works_at")
+
+
+def test_mutation_serialization_preserves_none_field_clears():
+    mutation = ObjectMutation(
+        object_type="person",
+        update=ObjectUpdate(key={"xuid": "x-1"}, values={"role": None}),
+    )
+
+    dumped = mutation.model_dump()
+
+    assert dumped == {
+        "object_mutation": {"object_type": "person", "update": {"key": {"xuid": "x-1"}, "values": {"role": None}}},
+    }
+
+
+def test_relation_mutation_serialization():
+    mutation = RelationMutation(
+        relation_type="works_at",
+        delete=RelationDelete(
+            endpoints=[RelationEndpoint(object_name="person", key={"email": "a@x.io"})],
+            allow_bulk_delete=True,
+        ),
+    )
+
+    dumped = mutation.model_dump()
+
+    assert dumped == {
+        "relation_mutation": {
+            "relation_type": "works_at",
+            "delete": {
+                "key": {},
+                "endpoints": [{"object_name": "person", "key": {"email": "a@x.io"}}],
+                "allow_bulk_delete": True,
+            },
+        },
+    }
 
 
 def test_instance_write_status(httpx_mock, client):
