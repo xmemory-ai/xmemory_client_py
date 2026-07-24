@@ -2,6 +2,29 @@
 
 All notable changes to `xmemory-ai` are documented here.
 
+## 0.12.0
+
+Structured writes: `write` and `write_async` now also accept
+`structured_mutations` — an ordered list of deterministic, LLM-free
+create/update/delete mutations of objects and relations, mutually exclusive
+with `text`. Mutations can be built from the new typed models
+(`ObjectMutation`, `RelationMutation`, `ObjectCreate/Update/Delete`,
+`RelationCreate/Update/Delete`, `RelationEndpoint` — all exported) or passed as
+plain dicts in the API's wire form; a `None` value inside a mutation's
+`values` clears that field. Plain text writes are unchanged on the wire.
+
+Requires a server with structured-writes support (`structured_mutations` on
+`/write` and `/write_async`); older servers reject the new request field.
+
+### Added
+
+- `write(structured_mutations=[...])` / `write_async(structured_mutations=[...])`
+  on both the sync and async instance APIs (`text` is now optional; exactly one
+  of the two inputs must be provided, enforced client-side with `ValueError`).
+- Typed mutation models: `WriteMutation`, `ObjectMutation`, `ObjectCreate`,
+  `ObjectUpdate`, `ObjectDelete`, `RelationMutation`, `RelationCreate`,
+  `RelationUpdate`, `RelationDelete`, `RelationEndpoint`.
+
 ## 0.11.0
 
 Licensing-only release: the client library is now MIT-licensed. Package

@@ -136,6 +136,19 @@ print(result.changes)  # what the write created / updated / deleted
 job = inst.write_async("Bob joined the team on Monday as a designer.")
 status = inst.write_status(job.write_id)
 
+# Structured write: deterministic, LLM-free create/update/delete mutations
+# (mutually exclusive with text; applied in list order)
+from xmemory import ObjectCreate, ObjectMutation
+
+result = inst.write(structured_mutations=[
+    ObjectMutation(
+        object_type="person",
+        create=ObjectCreate(key={"name": "Bob"}, values={"role": "designer"}),
+    ),
+    # Plain dicts in the API wire form work too:
+    {"object_mutation": {"object_type": "person", "update": {"key": {"name": "Bob"}, "values": {"role": None}}}},  # None clears
+])
+
 # Extract (without persisting)
 result = inst.extract("Carol is a manager based in Berlin.")
 print(result.objects_extracted)

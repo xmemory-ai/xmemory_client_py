@@ -1,5 +1,8 @@
 import threading
 import time
+from typing import Any
+
+from pydantic import BaseModel
 
 from xmemory._models import (
     AsyncWriteResult,
@@ -10,6 +13,7 @@ from xmemory._models import (
     ReadMode,
     ReadResult,
     ReadScope,
+    WriteMutation,
     WriteResult,
     WriteStatusResult,
     _ExtractRequest,
@@ -29,6 +33,27 @@ from xmemory._schema_evolution import (
 from xmemory._transport import AsyncTransport, SyncTransport
 
 _DEFAULT_DESCRIBE_TTL_SECONDS: float = 300.0  # 5 minutes
+
+
+def _build_write_request(
+    text: str,
+    structured_mutations: list[WriteMutation | dict[str, Any]] | None,
+    extraction_logic: ExtractionLogic,
+    diff_engine: bool | None,
+) -> _WriteRequest:
+    """Validate the text/structured_mutations exclusivity and build the request body."""
+    if bool(text) == (structured_mutations is not None):
+        raise ValueError("Provide exactly one of 'text' or 'structured_mutations'.")
+    if structured_mutations is not None and not structured_mutations:
+        raise ValueError("'structured_mutations' must contain at least one mutation.")
+    return _WriteRequest(
+        text=text,
+        extraction_logic=extraction_logic,
+        use_diff_engine=diff_engine,
+        structured_mutations=None if structured_mutations is None else [
+            m.model_dump() if isinstance(m, BaseModel) else m for m in structured_mutations
+        ],
+    )
 
 
 class InstanceAPI:
@@ -71,31 +96,50 @@ class InstanceAPI:
 
     def write(
         self,
-        text: str,
+        text: str = "",
         *,
+        structured_mutations: list[WriteMutation | dict[str, Any]] | None = None,
         extraction_logic: ExtractionLogic = ExtractionLogic.FAST,
         diff_engine: bool | None = None,
         timeout: float | None = None,
     ) -> WriteResult:
-        """Extract structured data from text and persist it to this instance."""
+        """Write to this instance: extract from free text, or apply structured mutations.
+
+        Pass ``text`` to extract structured data from free-form text, or
+        ``structured_mutations`` — a list of :class:`ObjectMutation` /
+        :class:`RelationMutation` (or equivalent plain dicts in the wire form,
+        e.g. ``{"object_mutation": {"object_type": "person", "update":
+        {"key": {...}, "values": {...}}}}``) — to apply deterministic,
+        LLM-free edits. Exactly
+        one of the two must be provided. Mutations are applied in list order;
+        later mutations may reference objects created earlier in the batch, and
+        a ``None`` value in a mutation's ``values`` clears that field.
+
+        ``extraction_logic`` and ``diff_engine`` only affect the ``text`` path.
+        """
         return self._t.request_one(
             "POST", f"/instances/{self._id}/write", WriteResult,
-            body=_WriteRequest(text=text, extraction_logic=extraction_logic, use_diff_engine=diff_engine),
+            body=_build_write_request(text, structured_mutations, extraction_logic, diff_engine),
             timeout=timeout,
         )
 
     def write_async(
         self,
-        text: str,
+        text: str = "",
         *,
+        structured_mutations: list[WriteMutation | dict[str, Any]] | None = None,
         extraction_logic: ExtractionLogic = ExtractionLogic.FAST,
         diff_engine: bool | None = None,
         timeout: float | None = None,
     ) -> AsyncWriteResult:
-        """Submit a write job and return immediately with a write_id for polling."""
+        """Submit a write job and return immediately with a write_id for polling.
+
+        Accepts the same ``text`` / ``structured_mutations`` dual input as
+        :meth:`write` (exactly one of the two).
+        """
         return self._t.request_one(
             "POST", f"/instances/{self._id}/write_async", AsyncWriteResult,
-            body=_WriteRequest(text=text, extraction_logic=extraction_logic, use_diff_engine=diff_engine),
+            body=_build_write_request(text, structured_mutations, extraction_logic, diff_engine),
             timeout=timeout,
         )
 
@@ -253,31 +297,50 @@ class AsyncInstanceAPI:
 
     async def write(
         self,
-        text: str,
+        text: str = "",
         *,
+        structured_mutations: list[WriteMutation | dict[str, Any]] | None = None,
         extraction_logic: ExtractionLogic = ExtractionLogic.FAST,
         diff_engine: bool | None = None,
         timeout: float | None = None,
     ) -> WriteResult:
-        """Extract structured data from text and persist it to this instance."""
+        """Write to this instance: extract from free text, or apply structured mutations.
+
+        Pass ``text`` to extract structured data from free-form text, or
+        ``structured_mutations`` — a list of :class:`ObjectMutation` /
+        :class:`RelationMutation` (or equivalent plain dicts in the wire form,
+        e.g. ``{"object_mutation": {"object_type": "person", "update":
+        {"key": {...}, "values": {...}}}}``) — to apply deterministic,
+        LLM-free edits. Exactly
+        one of the two must be provided. Mutations are applied in list order;
+        later mutations may reference objects created earlier in the batch, and
+        a ``None`` value in a mutation's ``values`` clears that field.
+
+        ``extraction_logic`` and ``diff_engine`` only affect the ``text`` path.
+        """
         return await self._t.request_one(
             "POST", f"/instances/{self._id}/write", WriteResult,
-            body=_WriteRequest(text=text, extraction_logic=extraction_logic, use_diff_engine=diff_engine),
+            body=_build_write_request(text, structured_mutations, extraction_logic, diff_engine),
             timeout=timeout,
         )
 
     async def write_async(
         self,
-        text: str,
+        text: str = "",
         *,
+        structured_mutations: list[WriteMutation | dict[str, Any]] | None = None,
         extraction_logic: ExtractionLogic = ExtractionLogic.FAST,
         diff_engine: bool | None = None,
         timeout: float | None = None,
     ) -> AsyncWriteResult:
-        """Submit a write job and return immediately with a write_id for polling."""
+        """Submit a write job and return immediately with a write_id for polling.
+
+        Accepts the same ``text`` / ``structured_mutations`` dual input as
+        :meth:`write` (exactly one of the two).
+        """
         return await self._t.request_one(
             "POST", f"/instances/{self._id}/write_async", AsyncWriteResult,
-            body=_WriteRequest(text=text, extraction_logic=extraction_logic, use_diff_engine=diff_engine),
+            body=_build_write_request(text, structured_mutations, extraction_logic, diff_engine),
             timeout=timeout,
         )
 

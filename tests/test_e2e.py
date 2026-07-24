@@ -162,6 +162,31 @@ def test_extract(instance):
     assert result.objects_extracted is not None
 
 
+def test_structured_write_lifecycle(instance):
+    """create -> update (incl. a None field-clear) -> delete, all LLM-free."""
+    inst, _ = instance
+
+    created = inst.write(structured_mutations=[
+        {"object_mutation": {"object_type": "person", "create": {
+            "key": {"name": "Eve"}, "values": {"role": "analyst", "location": "Lisbon"},
+        }}},
+    ])
+    assert created.write_id
+    assert "Eve" in str(created.changes["created"])
+
+    updated = inst.write(structured_mutations=[
+        {"object_mutation": {"object_type": "person", "update": {
+            "key": {"name": "Eve"}, "values": {"role": "senior analyst", "location": None},
+        }}},
+    ])
+    assert "senior analyst" in str(updated.changes["updated"])
+
+    deleted = inst.write(structured_mutations=[
+        {"object_mutation": {"object_type": "person", "delete": {"key": {"name": "Eve"}}}},
+    ])
+    assert "Eve" in str(deleted.changes["deleted"])
+
+
 def test_write_async_and_poll(instance):
     inst, _ = instance
     async_result = inst.write_async("Dave is an intern starting next Monday.")

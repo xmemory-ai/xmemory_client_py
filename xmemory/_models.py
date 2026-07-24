@@ -337,10 +337,154 @@ class _ReadRequest(BaseModel):
     read_id: str | None = None
 
 
+# ---------------------------------------------------------------------------
+# Structured write mutations (public request models)
+# ---------------------------------------------------------------------------
+
+
+class RelationEndpoint(BaseModel):
+    """One endpoint of a relation mutation.
+
+    ``object_name`` is the relation role name from the instance schema; ``key``
+    identifies the endpoint object by its user-defined primary-key fields
+    (field -> value) or ``{"xuid": ...}``.
+    """
+
+    object_name: str
+    key: dict[str, Any] = {}
+
+
+class ObjectCreate(BaseModel):
+    """Create an object: ``key`` holds the user primary-key fields (no ``xuid`` —
+    it is generated server-side), ``values`` the remaining field values."""
+
+    key: dict[str, Any] = {}
+    values: dict[str, Any] = {}
+
+
+class ObjectUpdate(BaseModel):
+    """Update an object identified by ``key`` (primary-key fields or
+    ``{"xuid": ...}``). A ``None`` value in ``values`` clears that field."""
+
+    key: dict[str, Any] = {}
+    values: dict[str, Any] = {}
+
+
+class ObjectDelete(BaseModel):
+    """Delete the object identified by ``key`` (primary-key fields or ``{"xuid": ...}``)."""
+
+    key: dict[str, Any] = {}
+
+
+class RelationCreate(BaseModel):
+    """Create a relation between the ``endpoints``, with optional own-field ``values``."""
+
+    endpoints: list[RelationEndpoint] = []
+    values: dict[str, Any] = {}
+
+
+class RelationUpdate(BaseModel):
+    """Update a relation's own fields. Address it by ``endpoints``, or by
+    ``key={"xuid": ...}`` when endpoints are ambiguous. A ``None`` value in
+    ``values`` clears that field."""
+
+    key: dict[str, Any] = {}
+    endpoints: list[RelationEndpoint] = []
+    values: dict[str, Any] = {}
+
+
+class RelationDelete(BaseModel):
+    """Delete relation(s) matched by ``endpoints`` (a subset is allowed) or by
+    ``key={"xuid": ...}``. Deleting more than one matched row requires
+    ``allow_bulk_delete=True``."""
+
+    key: dict[str, Any] = {}
+    endpoints: list[RelationEndpoint] = []
+    allow_bulk_delete: bool = False
+
+
+def _single_op(model: BaseModel) -> tuple[str, BaseModel]:
+    """Return the single set op branch of a mutation, or raise ``ValueError``."""
+    set_ops = [
+        (name, payload)
+        for name in ("create", "update", "delete")
+        if (payload := getattr(model, name)) is not None
+    ]
+    if len(set_ops) != 1:
+        raise ValueError(
+            f"{type(model).__name__}: exactly one of 'create', 'update', 'delete' must be set.",
+        )
+    return set_ops[0]
+
+
+class ObjectMutation(BaseModel):
+    """One structured mutation of an object: exactly one of ``create`` /
+    ``update`` / ``delete``, applied to the schema object type ``object_type``.
+
+    Serialized to the API's tagged wire form —
+    ``{"object_mutation": {"object_type": ..., "<op>": {...}}}``.
+    """
+
+    object_type: str
+    create: ObjectCreate | None = None
+    update: ObjectUpdate | None = None
+    delete: ObjectDelete | None = None
+
+    @model_validator(mode="after")
+    def _exactly_one_op(self) -> ObjectMutation:
+        _single_op(self)
+        return self
+
+    @model_serializer
+    def _serialize(self) -> dict[str, Any]:
+        # ``model_dump`` (not ``exclude_none``) so a ``None`` inside ``values``
+        # — a field clear — survives; only the unset op branches are dropped.
+        op, payload = _single_op(self)
+        return {"object_mutation": {"object_type": self.object_type, op: payload.model_dump()}}
+
+
+class RelationMutation(BaseModel):
+    """One structured mutation of a relation: exactly one of ``create`` /
+    ``update`` / ``delete``, applied to the schema relation type ``relation_type``.
+
+    Serialized to the API's tagged wire form —
+    ``{"relation_mutation": {"relation_type": ..., "<op>": {...}}}``.
+    """
+
+    relation_type: str
+    create: RelationCreate | None = None
+    update: RelationUpdate | None = None
+    delete: RelationDelete | None = None
+
+    @model_validator(mode="after")
+    def _exactly_one_op(self) -> RelationMutation:
+        _single_op(self)
+        return self
+
+    @model_serializer
+    def _serialize(self) -> dict[str, Any]:
+        op, payload = _single_op(self)
+        return {"relation_mutation": {"relation_type": self.relation_type, op: payload.model_dump()}}
+
+
+WriteMutation = ObjectMutation | RelationMutation
+"""A structured write mutation — either an object or a relation mutation."""
+
+
 class _WriteRequest(BaseModel):
-    text: str
+    text: str = ""
     extraction_logic: ExtractionLogic = ExtractionLogic.FAST
     use_diff_engine: bool | None = None
+    structured_mutations: list[dict[str, Any]] | None = None
+
+    @model_serializer(mode="wrap")
+    def _omit_unset_structured_mutations(self, handler: Any) -> dict[str, Any]:
+        # Omit the key entirely when unset: older servers reject unknown
+        # request fields, so plain text writes must stay byte-identical.
+        data = handler(self)
+        if self.structured_mutations is None:
+            data.pop("structured_mutations", None)
+        return data
 
 
 class _ExtractRequest(BaseModel):
