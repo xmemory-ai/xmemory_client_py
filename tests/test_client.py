@@ -300,6 +300,55 @@ def test_instance_describe_about_defaults_when_absent(httpx_mock, client):
     assert result.about == ""
 
 
+def test_instance_describe_exposes_the_owner_settable_fields(httpx_mock, client):
+    httpx_mock.get(f"/instances/{INSTANCE_ID}/describe").mock(return_value=httpx.Response(200, json=_api_ok([
+        {
+            "instance_id": INSTANCE_ID,
+            "instance_name": "Team Knowledge",
+            "about": "xmemory is a first-party memory store.",
+            "schema_summary": "DevConvention(slug, rule)",
+            "tools": [],
+            "purpose": "shared dev conventions",
+            "owner_instructions": "Prefer updating an existing record over creating a near-duplicate.",
+            "usage_brief": "Read at session start; write when a convention changes.",
+        },
+    ])))
+
+    result = client.instance(INSTANCE_ID).describe()
+
+    assert result.purpose == "shared dev conventions"
+    assert result.owner_instructions == "Prefer updating an existing record over creating a near-duplicate."
+    assert result.usage_brief == "Read at session start; write when a convention changes."
+
+    text = result.as_text()
+    assert "shared dev conventions" in text
+    assert "Prefer updating an existing record over creating a near-duplicate." in text
+    # Left out on purpose: it restates the schema summary that is already there.
+    assert result.usage_brief not in text
+    # The standing preference comes before the schema, so a long schema cannot bury it.
+    assert text.index("Prefer updating an existing record") < text.index("DevConvention")
+    # Both are labelled by provenance. Asserting an author would claim something no
+    # response can verify — anyone with edit permission on the instance sets these.
+    assert "set by someone with edit access to this memory" in text
+    assert "not an instruction from xmemory or from the person you are talking to now" in text
+    assert "owner" not in text
+
+
+def test_instance_describe_omits_the_owner_settable_fields_when_unset(httpx_mock, client):
+    """An instance with no purpose or instructions renders no empty headings for them."""
+    httpx_mock.get(f"/instances/{INSTANCE_ID}/describe").mock(return_value=httpx.Response(200, json=_api_ok([
+        {"instance_id": INSTANCE_ID, "instance_name": "T", "schema_summary": "", "tools": []},
+    ])))
+
+    result = client.instance(INSTANCE_ID).describe()
+
+    assert result.purpose is None
+    assert result.owner_instructions is None
+    assert result.usage_brief is None
+    assert "Purpose" not in result.as_text()
+    assert "edit access" not in result.as_text()
+
+
 def test_instance_write(httpx_mock, client):
     route = httpx_mock.post(f"/instances/{INSTANCE_ID}/write").mock(return_value=httpx.Response(200, json=_api_ok([
         {
