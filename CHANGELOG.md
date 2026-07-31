@@ -2,6 +2,42 @@
 
 All notable changes to `xmemory-ai` are documented here.
 
+## 0.13.0
+
+Surfaces the agent-facing instance metadata the API already returns: what a
+memory is *for*, the standing preference set for how agents should use it, and
+the advisory hints that seed a connect flow.
+
+Nothing here is required. Older versions keep working against the same server —
+they simply do not see these fields.
+
+### Added
+
+- `DescribeResult.purpose`, `.owner_instructions` and `.usage_brief`.
+  `as_text()` now includes the first two — the purpose under the instance line,
+  the standing preference above the schema summary so a long schema cannot bury
+  it. Each is labelled with where it came from rather than as this library's own
+  words, because anyone holding edit permission on an instance can set either
+  one, so a label naming an author would claim something no response can verify.
+  `usage_brief` is exposed as an attribute but deliberately left out of
+  `as_text()`, because it restates the schema summary already in there.
+- Agent metadata on `InstanceInfo`: `agent_surfaces`,
+  `agent_default_binding_tier`, `agent_engagement_hints`,
+  `agent_owner_instructions` and `agent_owner_instructions_epoch`. Typed as
+  plain strings rather than enums so a value added to the server after this
+  release is read rather than rejected.
+- `admin.patch_instance_metadata(...)` (sync and async) — `PATCH
+  /instances/{id}`. Every argument is optional and independent: omit one and the
+  stored value is untouched, pass `None` to clear it.
+- `AgentSurface` and `BindingTier` enums for the accepted hint values, plus the
+  `UNSET` sentinel (and `UnsetType`) that distinguishes "leave it alone" from
+  "clear it". Plain strings are accepted wherever an enum is, so a newer server
+  can be driven without waiting for a release here.
+- `admin.update_instance_metadata(...)` gained `agent_owner_instructions` and
+  `expected_owner_instructions_epoch`. Pass the epoch from the response you
+  composed your edit from and the server refuses a save that raced someone
+  else's rather than overwriting it.
+
 ## 0.12.0
 
 Structured writes: `write` and `write_async` now also accept

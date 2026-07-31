@@ -110,6 +110,9 @@ client.admin.update_instance_schema("<instance-id>", new_schema, SchemaType.YML)
 # Metadata management
 client.admin.update_instance_metadata("<instance-id>", "new-name", "new description")
 
+# Change one field and leave the rest alone
+client.admin.patch_instance_metadata("<instance-id>", description="a new description")
+
 # Schema generation
 result = client.admin.generate_schema(cluster_id, "People with name, role, and location.")
 print(result.data_schema)
@@ -118,6 +121,55 @@ print(result.data_schema)
 `create_instance` returns an `InstanceAPI` bound to the new instance, ready for data operations.
 
 `list_instances` and `get_instance` return `InstanceInfo` metadata objects.
+
+#### Agent-facing instance metadata
+
+An instance can carry metadata that shapes how agents connect to it and what
+they do with it. `patch_instance_metadata` is the way to set it: every argument
+is independent, **omitting one leaves the stored value untouched**, and passing
+`None` clears it.
+
+```python
+from xmemory import AgentSurface, BindingTier
+
+client.admin.patch_instance_metadata(
+    "<instance-id>",
+    # Authoritative: rendered verbatim wherever agents are told about this
+    # instance. Max 2000 characters.
+    agent_owner_instructions="Prefer updating an existing record over creating a near-duplicate.",
+    # Advisory hints — they seed what a connect flow proposes, and grant nothing.
+    agent_surfaces=[AgentSurface.CLAUDE_CODE, AgentSurface.CODEX],
+    agent_default_binding_tier=BindingTier.AUTOLOAD,
+    agent_engagement_hints=["a convention is learned or corrected"],
+)
+```
+
+Reading it back:
+
+```python
+info = client.admin.get_instance("<instance-id>")
+info.agent_owner_instructions
+info.agent_surfaces                    # e.g. ["claude_code", "codex"]
+info.agent_default_binding_tier        # e.g. "autoload"
+info.agent_engagement_hints
+```
+
+These read as plain strings rather than enums, so a value your server knows and
+this release does not is returned rather than rejected.
+
+**Editing instructions safely.** `agent_owner_instructions` can be edited by
+more than one client at a time, so an edit composed from a value you read
+earlier can lose a race. Pass the epoch you read it at and the server
+refuses the losing save instead of applying it:
+
+```python
+info = client.admin.get_instance("<instance-id>")
+client.admin.update_instance_metadata(
+    "<instance-id>", info.name, info.description,
+    agent_owner_instructions=(info.agent_owner_instructions or "") + "\nAlso: never paraphrase a rule.",
+    expected_owner_instructions_epoch=info.agent_owner_instructions_epoch,
+)
+```
 
 ### Instance API (`client.instance(id)`)
 
@@ -152,7 +204,24 @@ result = inst.write(structured_mutations=[
 # Extract (without persisting)
 result = inst.extract("Carol is a manager based in Berlin.")
 print(result.objects_extracted)
+
+# Describe: agent-facing tool docs, plus what this memory is for
+described = inst.describe()
+print(described.as_text())      # ready to inject into a system prompt
+described.purpose               # what the memory is for (the instance description)
+described.owner_instructions    # the standing preference set for it, verbatim
+described.usage_brief           # generated from the schema; None until generated
 ```
+
+`as_text()` includes `purpose` and `owner_instructions` when the instance has
+them. `usage_brief` is left out of it — it restates the schema summary that is
+already there — so read the attribute if you want it.
+
+Both fields are free text set by anyone holding edit permission on the instance,
+so `as_text()` labels each with where it came from rather than presenting it as
+the library's own words. Those labels state provenance; they are not a security
+boundary. If you inject this into a system prompt you are still handling text you
+do not control.
 
 #### Read modes
 
@@ -489,6 +558,7 @@ except XmemoryAPIError as e:
 | `admin.get_instance_schema()` | `InstanceSchemaInfo` |
 | `admin.update_instance_schema()` | `InstanceInfo` |
 | `admin.update_instance_metadata()` | `InstanceInfo` |
+| `admin.patch_instance_metadata()` | `InstanceInfo` |
 | `admin.delete_instance()` | `list[str]` |
 | `admin.generate_schema()` | `GenerateSchemaResult` |
 | `admin.enhance_schema()` | `EnhanceSchemaResult` |
