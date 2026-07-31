@@ -41,6 +41,49 @@ class WriteQueueStatus(str, Enum):
     NOT_FOUND = "not_found"
 
 
+class AgentSurface(str, Enum):
+    """An agent surface an instance is expected to be used from.
+
+    Advisory: it seeds what a connect flow leads with, and grants nothing. Offered
+    for writing the hint; reads stay plain strings so a surface added to the server
+    after this release does not fail validation here.
+    """
+
+    CLAUDE_CODE = "claude_code"
+    CODEX = "codex"
+    CLAUDE_DESKTOP = "claude_desktop"
+    CHATGPT = "chatgpt"
+
+
+class BindingTier(str, Enum):
+    """How prominently a bound instance should participate in an agent session.
+
+    ``AUTOLOAD`` proposes injecting the instance's context at session start;
+    ``AVAILABLE`` proposes a one-line mention an agent can act on when relevant.
+    A default for a binding only — the client-side binding is authoritative.
+    """
+
+    AUTOLOAD = "autoload"
+    AVAILABLE = "available"
+
+
+# ---------------------------------------------------------------------------
+# "Not passed" sentinel
+# ---------------------------------------------------------------------------
+
+
+class UnsetType(Enum):
+    """Type of the :data:`UNSET` sentinel. Single-member so it narrows cleanly."""
+
+    UNSET = "UNSET"
+
+
+#: Default for metadata arguments that distinguish "leave it as it is" from
+#: "clear it". Omitting an argument (leaving it ``UNSET``) sends no such key at
+#: all; passing ``None`` explicitly sends null and clears the stored value.
+UNSET = UnsetType.UNSET
+
+
 # ---------------------------------------------------------------------------
 # Public resource models
 # ---------------------------------------------------------------------------
@@ -59,6 +102,23 @@ class InstanceInfo(BaseModel):
     name: str
     description: str | None = None
     data_schema: dict[str, Any] | None = None
+    # Agent-integration metadata. ``None`` means "not set" throughout — never "off".
+    #
+    # The first three are advisory hints that seed what a connect flow proposes.
+    # They are typed as plain strings rather than :class:`AgentSurface` /
+    # :class:`BindingTier` on purpose: the server tolerates a stored value this
+    # release has never heard of, and a strict enum here would turn that into a
+    # validation error inside every ``get_instance`` for that instance.
+    agent_surfaces: list[str] | None = None
+    agent_default_binding_tier: str | None = None
+    agent_engagement_hints: list[str] | None = None
+    # Authoritative rather than advisory: what the owner told agents to do with
+    # this instance, meant to be rendered verbatim wherever it is shown.
+    agent_owner_instructions: str | None = None
+    # Which edit of the instructions above this response describes. Pass it back as
+    # ``expected_owner_instructions_epoch`` when saving an edit composed from it, and
+    # a save that raced someone else's is refused instead of silently overwriting.
+    agent_owner_instructions_epoch: int = 0
     # Schema-evolution fields — populated only by ``update_instance_schema``
     # when the call ran a (non-no-op) migration. Absent (``None``) on
     # responses from endpoints that don't migrate (get/create/list).
@@ -331,9 +391,41 @@ class _DryRunMigrationRequest(BaseModel):
     confirm_destructive: bool = False
 
 
-class _UpdateMetadataRequest(BaseModel):
+class _OmitUnsetRequest(BaseModel):
+    """A request body that sends only the fields the caller actually named.
+
+    The metadata endpoints decide what to touch from the keys present in the JSON,
+    so a field sent unasked is a field cleared: a client that always sent
+    ``agent_owner_instructions`` would wipe an owner's standing rule for anyone who
+    used it to rename an instance. Fields default to :data:`UNSET` and are dropped
+    here; an explicit ``None`` is kept, sends null, and clears the stored value.
+    """
+
+    @model_serializer
+    def _serialize(self) -> dict[str, Any]:
+        return {
+            name: value
+            for name in type(self).model_fields
+            if (value := getattr(self, name)) is not UNSET
+        }
+
+
+class _UpdateMetadataRequest(_OmitUnsetRequest):
+    # ``name`` and ``description`` are required by the endpoint and always passed,
+    # so they are always sent; the two below appear only when the caller names them.
     name: str
     description: str | None
+    agent_owner_instructions: str | None | UnsetType = UNSET
+    expected_owner_instructions_epoch: int | UnsetType = UNSET
+
+
+class _PatchMetadataRequest(_OmitUnsetRequest):
+    name: str | UnsetType = UNSET
+    description: str | None | UnsetType = UNSET
+    agent_surfaces: list[str] | None | UnsetType = UNSET
+    agent_default_binding_tier: str | None | UnsetType = UNSET
+    agent_engagement_hints: list[str] | None | UnsetType = UNSET
+    agent_owner_instructions: str | None | UnsetType = UNSET
 
 
 class _GenerateSchemaRequest(BaseModel):
