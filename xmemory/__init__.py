@@ -3,7 +3,10 @@ from xmemory._exceptions import (
     XmemoryHealthCheckError,
 )
 from xmemory._models import (
+    UNSET,
+    AgentSurface,
     AsyncWriteResult,
+    BindingTier,
     ClusterInfo,
     DescribeResult,
     ExtractResult,
@@ -28,6 +31,7 @@ from xmemory._models import (
     ScopeObject,
     ToolDescription,
     ToolParameterDescription,
+    UnsetType,
     WriteMutation,
     WriteQueueStatus,
     WriteResult,
@@ -91,6 +95,11 @@ __all__ = [
     "ScopeObject",
     "ExtractionLogic",
     "WriteQueueStatus",
+    # Agent-facing instance metadata
+    "AgentSurface",
+    "BindingTier",
+    "UNSET",
+    "UnsetType",
     "XmemoryAPIError",
     "XmemoryHealthCheckError",
     "ClusterInfo",

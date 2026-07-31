@@ -1,14 +1,18 @@
 """Unit tests for XmemoryClient / AdminAPI / InstanceAPI."""
 from __future__ import annotations
 
+import json
 import uuid
 
 import httpx
 import pytest
 import respx
 
+from xmemory._admin import _as_str_list
 from xmemory import (
+    AgentSurface,
     AsyncXmemoryClient,
+    BindingTier,
     InstanceAPI,
     ObjectCreate,
     ObjectDelete,
@@ -563,6 +567,201 @@ def test_admin_update_instance_metadata(httpx_mock, client):
     assert result.name == "new-name"
     assert route.called
     assert b'"name":"new-name"' in route.calls.last.request.content
+
+
+# ---------------------------------------------------------------------------
+# Agent-facing instance metadata
+# ---------------------------------------------------------------------------
+
+
+def _instance_item(**extra) -> dict:
+    return {"id": INSTANCE_ID, "cluster_id": CLUSTER_ID, "name": "n", "description": None, **extra}
+
+
+def test_renaming_an_instance_does_not_touch_the_owner_instructions(httpx_mock, client):
+    """The wipe this whole design exists to prevent.
+
+    The endpoint clears any field it is sent, so a rename that also serialized
+    ``agent_owner_instructions`` would erase an owner's standing rule as a side
+    effect of changing the name.
+    """
+    route = httpx_mock.put(f"/instances/{INSTANCE_ID}").mock(
+        return_value=httpx.Response(200, json=_api_ok([_instance_item(name="new-name")])),
+    )
+
+    client.admin.update_instance_metadata(INSTANCE_ID, "new-name", "new-desc")
+
+    body = json.loads(route.calls.last.request.content)
+    assert body == {"name": "new-name", "description": "new-desc"}
+
+
+def test_owner_instructions_are_cleared_only_when_passed_explicitly(httpx_mock, client):
+    route = httpx_mock.put(f"/instances/{INSTANCE_ID}").mock(
+        return_value=httpx.Response(200, json=_api_ok([_instance_item()])),
+    )
+
+    client.admin.update_instance_metadata(INSTANCE_ID, "n", None, agent_owner_instructions=None)
+
+    body = json.loads(route.calls.last.request.content)
+    assert body["agent_owner_instructions"] is None
+
+
+def test_update_metadata_sends_the_epoch_guard_when_given_one(httpx_mock, client):
+    route = httpx_mock.put(f"/instances/{INSTANCE_ID}").mock(
+        return_value=httpx.Response(200, json=_api_ok([_instance_item()])),
+    )
+
+    client.admin.update_instance_metadata(
+        INSTANCE_ID, "n", None,
+        agent_owner_instructions="Prefer updating an existing record.",
+        expected_owner_instructions_epoch=7,
+    )
+
+    body = json.loads(route.calls.last.request.content)
+    assert body["agent_owner_instructions"] == "Prefer updating an existing record."
+    assert body["expected_owner_instructions_epoch"] == 7
+
+
+def test_patch_sends_only_the_named_fields(httpx_mock, client):
+    route = httpx_mock.patch(f"/instances/{INSTANCE_ID}").mock(
+        return_value=httpx.Response(200, json=_api_ok([_instance_item(name="renamed")])),
+    )
+
+    result = client.admin.patch_instance_metadata(INSTANCE_ID, name="renamed")
+
+    assert result.name == "renamed"
+    assert json.loads(route.calls.last.request.content) == {"name": "renamed"}
+
+
+def test_patch_serializes_the_agent_hints_as_wire_strings(httpx_mock, client):
+    route = httpx_mock.patch(f"/instances/{INSTANCE_ID}").mock(
+        return_value=httpx.Response(200, json=_api_ok([_instance_item()])),
+    )
+
+    client.admin.patch_instance_metadata(
+        INSTANCE_ID,
+        agent_surfaces=[AgentSurface.CLAUDE_CODE, AgentSurface.CODEX],
+        agent_default_binding_tier=BindingTier.AUTOLOAD,
+        agent_engagement_hints=["a convention is learned or corrected"],
+    )
+
+    assert json.loads(route.calls.last.request.content) == {
+        "agent_surfaces": ["claude_code", "codex"],
+        "agent_default_binding_tier": "autoload",
+        "agent_engagement_hints": ["a convention is learned or corrected"],
+    }
+
+
+def test_patch_accepts_plain_strings_for_the_hints(httpx_mock, client):
+    """A server newer than this release can be driven without waiting for an enum."""
+    route = httpx_mock.patch(f"/instances/{INSTANCE_ID}").mock(
+        return_value=httpx.Response(200, json=_api_ok([_instance_item()])),
+    )
+
+    client.admin.patch_instance_metadata(INSTANCE_ID, agent_surfaces=["some_future_surface"])
+
+    assert json.loads(route.calls.last.request.content) == {"agent_surfaces": ["some_future_surface"]}
+
+
+def test_patch_clears_fields_with_an_explicit_none(httpx_mock, client):
+    """Omit-vs-clear is the whole contract: ``None`` must reach the wire as null."""
+    route = httpx_mock.patch(f"/instances/{INSTANCE_ID}").mock(
+        return_value=httpx.Response(200, json=_api_ok([_instance_item()])),
+    )
+
+    client.admin.patch_instance_metadata(INSTANCE_ID, agent_owner_instructions=None, agent_surfaces=None)
+
+    assert json.loads(route.calls.last.request.content) == {
+        "agent_owner_instructions": None,
+        "agent_surfaces": None,
+    }
+
+
+def test_patch_refuses_a_bare_string_for_a_hint_list(client):
+    """``str`` satisfies ``Sequence[str]``, so nothing in the signature stops one.
+
+    Iterated, it would send each character as its own hint — and the server
+    accepts single-character hints, so the mistake would be stored, not rejected.
+    """
+    with pytest.raises(TypeError, match="bare string"):
+        client.admin.patch_instance_metadata(INSTANCE_ID, agent_engagement_hints="a convention changed")
+
+
+def test_as_str_list_copies_so_a_later_mutation_cannot_change_the_request():
+    hints = ["first"]
+
+    copied = _as_str_list(hints)
+    hints.append("second")
+
+    assert copied == ["first"]
+
+
+def test_instance_info_reads_the_agent_metadata(httpx_mock, client):
+    httpx_mock.get(f"/instances/{INSTANCE_ID}").mock(return_value=httpx.Response(200, json=_api_ok([
+        _instance_item(
+            agent_surfaces=["claude_code"],
+            agent_default_binding_tier="autoload",
+            agent_engagement_hints=["a convention is learned"],
+            agent_owner_instructions="Prefer updating an existing record.",
+            agent_owner_instructions_epoch=4,
+        ),
+    ])))
+
+    info = client.admin.get_instance(INSTANCE_ID)
+
+    assert info.agent_surfaces == ["claude_code"]
+    assert info.agent_default_binding_tier == "autoload"
+    assert info.agent_engagement_hints == ["a convention is learned"]
+    assert info.agent_owner_instructions == "Prefer updating an existing record."
+    assert info.agent_owner_instructions_epoch == 4
+
+
+def test_instance_info_tolerates_a_surface_this_release_never_heard_of(httpx_mock, client):
+    """A strict enum here would fail every read of an instance the server moved on from."""
+    httpx_mock.get(f"/instances/{INSTANCE_ID}").mock(return_value=httpx.Response(200, json=_api_ok([
+        _instance_item(agent_surfaces=["some_future_surface"], agent_default_binding_tier="some_future_tier"),
+    ])))
+
+    info = client.admin.get_instance(INSTANCE_ID)
+
+    assert info.agent_surfaces == ["some_future_surface"]
+    assert info.agent_default_binding_tier == "some_future_tier"
+
+
+def test_instance_info_defaults_when_the_server_sends_no_agent_metadata(httpx_mock, client):
+    httpx_mock.get(f"/instances/{INSTANCE_ID}").mock(
+        return_value=httpx.Response(200, json=_api_ok([_instance_item()])),
+    )
+
+    info = client.admin.get_instance(INSTANCE_ID)
+
+    assert info.agent_surfaces is None
+    assert info.agent_owner_instructions is None
+    assert info.agent_owner_instructions_epoch == 0
+
+
+async def test_async_patch_matches_the_sync_body(httpx_mock, async_client):
+    route = httpx_mock.patch(f"/instances/{INSTANCE_ID}").mock(
+        return_value=httpx.Response(200, json=_api_ok([_instance_item()])),
+    )
+
+    await async_client.admin.patch_instance_metadata(
+        INSTANCE_ID, agent_owner_instructions="Prefer updating an existing record.",
+    )
+
+    assert json.loads(route.calls.last.request.content) == {
+        "agent_owner_instructions": "Prefer updating an existing record.",
+    }
+
+
+async def test_async_rename_does_not_touch_the_owner_instructions(httpx_mock, async_client):
+    route = httpx_mock.put(f"/instances/{INSTANCE_ID}").mock(
+        return_value=httpx.Response(200, json=_api_ok([_instance_item()])),
+    )
+
+    await async_client.admin.update_instance_metadata(INSTANCE_ID, "new-name", "new-desc")
+
+    assert json.loads(route.calls.last.request.content) == {"name": "new-name", "description": "new-desc"}
 
 
 def test_admin_delete_instance(httpx_mock, client):
