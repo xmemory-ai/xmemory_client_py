@@ -276,9 +276,11 @@ class AdminAPI:
     ) -> InstanceInfo:
         """Update the name and description of an instance.
 
-        ``agent_owner_instructions`` — what the owner tells agents to do with this
-        instance — is left exactly as it is unless you name it. Pass ``None`` to
-        clear it.
+        ``agent_owner_instructions`` — the standing preference for how agents
+        should use this instance, set by anyone holding edit permission on it —
+        is left exactly as it is unless you name it. Pass ``None`` to clear it.
+        "owner" is the wire field's name, not a verified claim about who wrote
+        the text.
 
         When saving an edit you composed from a value read earlier, pass that
         response's :attr:`~xmemory.InstanceInfo.agent_owner_instructions_epoch` as
@@ -322,10 +324,19 @@ class AdminAPI:
         ``agent_engagement_hints`` are short routing phrases ("a convention is
         learned or corrected"); the server caps them at 16 of at most 200 characters.
 
-        ``agent_owner_instructions`` is authoritative rather than advisory: it is
-        rendered verbatim wherever it is shown, and the server caps it at 2000
-        characters. This endpoint takes no epoch guard — use
-        :meth:`update_instance_metadata` when you need one.
+        ``agent_owner_instructions`` is authoritative rather than advisory —
+        meaning it outranks generated text and is rendered verbatim wherever it
+        is shown, not that its authorship is verified: anyone holding edit
+        permission on the instance can set it, including an agent asked to. The
+        server caps it at 2000 characters.
+
+        Prefer :meth:`update_instance_metadata` for that field: this endpoint
+        accepts no ``expected_owner_instructions_epoch``, so an edit composed
+        from a value someone has since replaced overwrites theirs silently. The
+        three hints above are last-writer-wins by design — a lost update there
+        only re-proposes a suggestion — but a lost instruction is a rule that
+        stops being enforced. Use this one for the instructions only when you
+        are seeding a value no one else is editing.
         """
         return self._t.request_one(
             "PATCH", f"/instances/{instance_id}", InstanceInfo,
@@ -566,9 +577,11 @@ class AsyncAdminAPI:
     ) -> InstanceInfo:
         """Update the name and description of an instance.
 
-        ``agent_owner_instructions`` — what the owner tells agents to do with this
-        instance — is left exactly as it is unless you name it. Pass ``None`` to
-        clear it.
+        ``agent_owner_instructions`` — the standing preference for how agents
+        should use this instance, set by anyone holding edit permission on it —
+        is left exactly as it is unless you name it. Pass ``None`` to clear it.
+        "owner" is the wire field's name, not a verified claim about who wrote
+        the text.
 
         When saving an edit you composed from a value read earlier, pass that
         response's :attr:`~xmemory.InstanceInfo.agent_owner_instructions_epoch` as
@@ -612,10 +625,19 @@ class AsyncAdminAPI:
         ``agent_engagement_hints`` are short routing phrases ("a convention is
         learned or corrected"); the server caps them at 16 of at most 200 characters.
 
-        ``agent_owner_instructions`` is authoritative rather than advisory: it is
-        rendered verbatim wherever it is shown, and the server caps it at 2000
-        characters. This endpoint takes no epoch guard — use
-        :meth:`update_instance_metadata` when you need one.
+        ``agent_owner_instructions`` is authoritative rather than advisory —
+        meaning it outranks generated text and is rendered verbatim wherever it
+        is shown, not that its authorship is verified: anyone holding edit
+        permission on the instance can set it, including an agent asked to. The
+        server caps it at 2000 characters.
+
+        Prefer :meth:`update_instance_metadata` for that field: this endpoint
+        accepts no ``expected_owner_instructions_epoch``, so an edit composed
+        from a value someone has since replaced overwrites theirs silently. The
+        three hints above are last-writer-wins by design — a lost update there
+        only re-proposes a suggestion — but a lost instruction is a rule that
+        stops being enforced. Use this one for the instructions only when you
+        are seeding a value no one else is editing.
         """
         return await self._t.request_one(
             "PATCH", f"/instances/{instance_id}", InstanceInfo,

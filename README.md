@@ -125,24 +125,25 @@ print(result.data_schema)
 #### Agent-facing instance metadata
 
 An instance can carry metadata that shapes how agents connect to it and what
-they do with it. `patch_instance_metadata` is the way to set it: every argument
-is independent, **omitting one leaves the stored value untouched**, and passing
-`None` clears it.
+they do with it. `patch_instance_metadata` is the way to set the advisory
+hints: every argument is independent, **omitting one leaves the stored value
+untouched**, and passing `None` clears it.
 
 ```python
 from xmemory import AgentSurface, BindingTier
 
 client.admin.patch_instance_metadata(
     "<instance-id>",
-    # Authoritative: rendered verbatim wherever agents are told about this
-    # instance. Max 2000 characters.
-    agent_owner_instructions="Prefer updating an existing record over creating a near-duplicate.",
     # Advisory hints — they seed what a connect flow proposes, and grant nothing.
     agent_surfaces=[AgentSurface.CLAUDE_CODE, AgentSurface.CODEX],
     agent_default_binding_tier=BindingTier.AUTOLOAD,
     agent_engagement_hints=["a convention is learned or corrected"],
 )
 ```
+
+Concurrent edits to these three are last-writer-wins by design: they only seed
+what a connect flow proposes, so the loser of a race re-applies a suggestion.
+`agent_owner_instructions` is not like that — see below.
 
 Reading it back:
 
@@ -157,10 +158,18 @@ info.agent_engagement_hints
 These read as plain strings rather than enums, so a value your server knows and
 this release does not is returned rather than rejected.
 
-**Editing instructions safely.** `agent_owner_instructions` can be edited by
-more than one client at a time, so an edit composed from a value you read
-earlier can lose a race. Pass the epoch you read it at and the server
-refuses the losing save instead of applying it:
+**Setting the standing instructions.** Use `update_instance_metadata` for
+`agent_owner_instructions`, not `patch_instance_metadata`. The field is
+rendered to agents verbatim, and a second writer edits it from the same screen,
+so a silently lost edit is a rule that stops being enforced. Only
+`update_instance_metadata` carries `expected_owner_instructions_epoch`: pass
+the epoch you read the value at and the server refuses the losing save instead
+of applying it.
+
+`patch_instance_metadata` also accepts the field — it is the only way to set it
+without restating the name — but it can carry no guard, so an edit composed
+from stale data overwrites a newer one silently. Reach for it only when you are
+seeding a value nobody else is editing.
 
 ```python
 info = client.admin.get_instance("<instance-id>")

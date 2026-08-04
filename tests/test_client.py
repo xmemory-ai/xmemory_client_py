@@ -764,6 +764,31 @@ async def test_async_rename_does_not_touch_the_owner_instructions(httpx_mock, as
     assert json.loads(route.calls.last.request.content) == {"name": "new-name", "description": "new-desc"}
 
 
+async def test_async_update_metadata_sends_the_instructions_and_the_epoch_guard(httpx_mock, async_client):
+    """The async PUT body is built by its own copy of the code the sync path uses.
+
+    The rename test above pins the omission half, but it passes neither argument, so
+    dropping either keyword from the async body construction leaves it green. This
+    covers the other half: named arguments actually reach the wire.
+    """
+    route = httpx_mock.put(f"/instances/{INSTANCE_ID}").mock(
+        return_value=httpx.Response(200, json=_api_ok([_instance_item()])),
+    )
+
+    await async_client.admin.update_instance_metadata(
+        INSTANCE_ID, "n", None,
+        agent_owner_instructions="Prefer updating an existing record.",
+        expected_owner_instructions_epoch=7,
+    )
+
+    assert json.loads(route.calls.last.request.content) == {
+        "name": "n",
+        "description": None,
+        "agent_owner_instructions": "Prefer updating an existing record.",
+        "expected_owner_instructions_epoch": 7,
+    }
+
+
 def test_admin_delete_instance(httpx_mock, client):
     route = httpx_mock.delete(f"/instances/{INSTANCE_ID}").mock(
         return_value=httpx.Response(200, json={"ids": [INSTANCE_ID], "items": [], "errors": []}),
