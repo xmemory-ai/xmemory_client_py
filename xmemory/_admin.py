@@ -461,7 +461,7 @@ class AsyncAdminAPI:
     ) -> AgentSetupResult:
         """How to connect this instance on an agent surface, most likely first.
 
-        Async counterpart of :meth:`AdminClient.get_setup_instructions`; see there for
+        Async counterpart of :meth:`AdminAPI.get_setup_instructions`; see there for
         what the payload is and why it carries no credential.
         """
         return await self._t.request_one(

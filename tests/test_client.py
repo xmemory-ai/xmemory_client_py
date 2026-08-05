@@ -10,6 +10,9 @@ import respx
 
 from xmemory._admin import _as_str_list
 from xmemory import (
+    AgentSetupResult,
+    AgentSetupStep,
+    AgentSetupSurface,
     AgentSurface,
     AsyncXmemoryClient,
     BindingTier,
@@ -22,6 +25,8 @@ from xmemory import (
     RelationDelete,
     RelationEndpoint,
     RelationMutation,
+    ProjectFragment,
+    ProjectSetup,
     SchemaType,
     SetupFormat,
     StepKind,
@@ -236,7 +241,14 @@ def test_instance_setup_instructions_is_available_without_the_admin_namespace(ht
             "instance_id": INSTANCE_ID,
             "instance_name": "Sprint tracker",
             "install_page_url": "https://xmemory.ai/install",
-            "surfaces": [],
+            "surfaces": [
+                {
+                    "surface": "claude_code",
+                    "label": "Claude Code",
+                    "steps": [{"description": "Install it.", "command": "claude plugin install x", "kind": "shell"}],
+                    "human_steps": ["Approve each command when the agent asks to run it."],
+                },
+            ],
             "paste_to_agent": "",
         },
     ])))
@@ -245,6 +257,64 @@ def test_instance_setup_instructions_is_available_without_the_admin_namespace(ht
 
     assert setup.instance_id == INSTANCE_ID
     assert route.called
+    # The public model classes, asserted as instances: without this the exports could be
+    # dropped from __init__ and every other test here would still pass.
+    assert isinstance(setup, AgentSetupResult)
+    assert isinstance(setup.surfaces[0], AgentSetupSurface)
+    assert isinstance(setup.surfaces[0].steps[0], AgentSetupStep)
+    assert setup.project is None
+
+
+def test_instance_setup_instructions_asks_for_the_project_format(httpx_mock, client):
+    # The instance handle maps its own path and parameter, so the format can be dropped
+    # here while the admin path still carries it.
+    route = httpx_mock.get(f"/instances/{INSTANCE_ID}/agent_setup").mock(return_value=httpx.Response(200, json=_api_ok([
+        {
+            "instance_id": INSTANCE_ID,
+            "instance_name": "Sprint tracker",
+            "install_page_url": "https://xmemory.ai/install",
+            "surfaces": [],
+            "paste_to_agent": "",
+            "format": "project",
+            "project": {
+                "fragments": [
+                    {"path": ".mcp.json", "purpose": "point the team at it", "merge": "merge_json", "content": "{}"},
+                ],
+                "manual_steps": ["Each teammate signs in once."],
+            },
+        },
+    ])))
+
+    setup = client.instance(INSTANCE_ID).setup_instructions(format=SetupFormat.PROJECT)
+
+    assert route.calls.last.request.url.params["format"] == "project"
+    assert isinstance(setup.project, ProjectSetup)
+    assert isinstance(setup.project.fragments[0], ProjectFragment)
+
+
+async def test_async_setup_instructions_map_the_same_routes(httpx_mock, async_client):
+    """Both async entry points duplicate their own path and parameter mapping.
+
+    A wrong route or a dropped format in either is invisible to the sync tests above,
+    which is exactly the kind of copy that drifts.
+    """
+    route = httpx_mock.get(f"/instances/{INSTANCE_ID}/agent_setup").mock(return_value=httpx.Response(200, json=_api_ok([
+        {
+            "instance_id": INSTANCE_ID,
+            "instance_name": "Sprint tracker",
+            "install_page_url": "https://xmemory.ai/install",
+            "surfaces": [],
+            "paste_to_agent": "",
+        },
+    ])))
+
+    via_admin = await async_client.admin.get_setup_instructions(INSTANCE_ID, format=SetupFormat.PROJECT)
+    assert route.calls.last.request.url.params["format"] == "project"
+    assert via_admin.instance_id == INSTANCE_ID
+
+    via_handle = await async_client.instance(INSTANCE_ID).setup_instructions()
+    assert route.calls.last.request.url.params["format"] == "agent"
+    assert via_handle.instance_id == INSTANCE_ID
 
 
 def test_admin_get_setup_instructions(httpx_mock, client):
@@ -326,6 +396,45 @@ def test_admin_setup_instructions_reports_the_format_actually_rendered(httpx_moc
 
     assert setup.format is SetupFormat.AGENT, "an omitted format means the server rendered the default"
     assert setup.project is None
+
+
+def test_admin_setup_instructions_survives_enum_values_from_a_newer_server(httpx_mock, client):
+    """An advisory value added after this release must not reject the whole payload.
+
+    `kind`, `merge` and `format` are all closed sets today, and a strict enum on any of
+    them turns an additive server change into a hard failure for every older client —
+    the whole result, not the one field. Known values still arrive as enum members, so
+    `kind is StepKind.SHELL` keeps working; an unrecognised one arrives as a string,
+    which is not any known kind and therefore not something to execute.
+    """
+    httpx_mock.get(f"/instances/{INSTANCE_ID}/agent_setup").mock(return_value=httpx.Response(200, json=_api_ok([
+        {
+            "instance_id": INSTANCE_ID,
+            "instance_name": "Sprint tracker",
+            "install_page_url": "https://xmemory.ai/install",
+            "surfaces": [
+                {
+                    "surface": "claude_code",
+                    "label": "Claude Code",
+                    "steps": [{"description": "Do a new thing.", "command": "x", "kind": "some_new_kind"}],
+                    "human_steps": [],
+                },
+            ],
+            "paste_to_agent": "",
+            "format": "some_new_format",
+            "project": {
+                "fragments": [{"path": "p", "purpose": "x", "merge": "merge_yaml", "content": "c"}],
+                "manual_steps": [],
+            },
+        },
+    ])))
+
+    setup = client.admin.get_setup_instructions(INSTANCE_ID)
+
+    assert setup.surfaces[0].steps[0].kind == "some_new_kind"
+    assert setup.surfaces[0].steps[0].kind is not StepKind.SHELL, "an unknown kind is not executable"
+    assert setup.format == "some_new_format"
+    assert setup.project is not None and setup.project.fragments[0].merge == "merge_yaml"
 
 
 def test_admin_setup_instructions_survives_a_surface_it_has_never_heard_of(httpx_mock, client):
