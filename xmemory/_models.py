@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Literal
+from typing import Any, Literal, Union
 
-from pydantic import BaseModel, model_serializer, model_validator
+from pydantic import BaseModel, Field, model_serializer, model_validator
 
 
 # ---------------------------------------------------------------------------
@@ -693,7 +693,13 @@ class AgentSetupStep(BaseModel):
     command: str | None = None
     # Absent rather than guessed where the server names no kind, which is also what an
     # older server sends. Read the absence as "not known to be a shell command".
-    kind: StepKind | None = None
+    #
+    # Left-to-right so a value this release knows arrives as the enum member — ``kind is
+    # StepKind.SHELL`` still holds — while one it does not arrives as a plain string
+    # rather than rejecting the whole payload. A step whose kind you do not recognise is
+    # not executable: this field exists because the command may be a slash command or a
+    # bare URL, so running an unknown kind in a shell is the mistake it prevents.
+    kind: Union[StepKind, str, None] = Field(default=None, union_mode="left_to_right")
 
 
 class AgentSetupSurface(BaseModel):
@@ -715,7 +721,11 @@ class ProjectFragment(BaseModel):
 
     path: str
     purpose: str
-    merge: FragmentMerge
+    # Same left-to-right tolerance as ``AgentSetupStep.kind``: a merge strategy added
+    # after this release must not make the whole setup result unparseable. A strategy
+    # you do not recognise cannot be applied safely — leave the file alone and surface
+    # the fragment as a manual step.
+    merge: Union[FragmentMerge, str] = Field(union_mode="left_to_right")
     content: str
 
 
@@ -734,9 +744,11 @@ class ProjectSetup(BaseModel):
 class AgentSetupResult(BaseModel):
     """How to connect one instance, ordered for where it is likely to be used.
 
-    The same payload the create response carries, the ``get_setup_instructions`` MCP
-    tools serve and ``xmemcli instance setup`` prints, so an agent reading this and a
-    person at a terminal follow the same instructions.
+    The same payload the server's create response carries, the ``get_setup_instructions``
+    MCP tools serve and ``xmemcli instance setup`` prints, so an agent reading this and a
+    person at a terminal follow the same instructions. (This client's
+    :meth:`~xmemory.AdminAPI.create_instance` returns an :class:`~xmemory.InstanceAPI`
+    handle rather than that payload — call one of the methods below for it.)
 
     **Carries no credential.** The steps tell a reader to sign in themselves, out of
     band, precisely so a key never lands in a transcript.
@@ -754,7 +766,7 @@ class AgentSetupResult(BaseModel):
     # older server ignores an unknown query parameter and answers 200, so a caller
     # asking for PROJECT can receive the agent payload with no error at all. Compare
     # this against what you requested rather than inferring from ``project`` being None.
-    format: SetupFormat = SetupFormat.AGENT
+    format: Union[SetupFormat, str] = Field(default=SetupFormat.AGENT, union_mode="left_to_right")
     # Present only when ``format=project`` was both requested and honoured.
     project: ProjectSetup | None = None
 

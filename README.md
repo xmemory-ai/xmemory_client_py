@@ -564,6 +564,7 @@ except XmemoryAPIError as e:
 | `admin.create_instance()` | `InstanceAPI` |
 | `admin.list_instances()` | `list[InstanceInfo]` |
 | `admin.get_instance()` | `InstanceInfo` |
+| `admin.get_setup_instructions()` | `AgentSetupResult` |
 | `admin.get_instance_schema()` | `InstanceSchemaInfo` |
 | `admin.update_instance_schema()` | `InstanceInfo` |
 | `admin.update_instance_metadata()` | `InstanceInfo` |
@@ -581,6 +582,7 @@ except XmemoryAPIError as e:
 | `inst.extract()` | `ExtractResult` |
 | `inst.get_schema()` | `InstanceSchemaInfo` |
 | `inst.describe()` | `DescribeResult` |
+| `inst.setup_instructions()` | `AgentSetupResult` |
 | `inst.review_suggestions()` | `ReviewSuggestionsResult` |
 | `inst.decide_suggestions()` | `DecideSuggestionsResult` |
 | `inst.apply_pending_decisions()` | `ApplyPendingDecisionsResult` |
@@ -607,3 +609,40 @@ python -m twine upload dist/*
 # test the package
 pip install xmemory-ai
 ```
+
+## Connecting an instance elsewhere
+
+`admin.get_setup_instructions(instance_id)` and `inst.setup_instructions()` both return an
+`AgentSetupResult`: how to reach the same memory from another agent surface, ordered
+most-likely-first. Available on either handle, because the MCP instance connection serves
+the same tool.
+
+```python
+setup = inst.setup_instructions()
+for surface in setup.surfaces:
+    print(surface.label)
+    for step in surface.steps:
+        print(" ", step.description, step.command or "")
+```
+
+Two formats. The default, `SetupFormat.AGENT`, answers *what do I run right now, here*.
+`SetupFormat.PROJECT` also returns the files a team commits once, so nobody sets the
+instance up by hand:
+
+```python
+setup = inst.setup_instructions(format=SetupFormat.PROJECT)
+if setup.format == SetupFormat.PROJECT and setup.project:
+    for fragment in setup.project.fragments:
+        print(fragment.path, fragment.merge)   # a merge, never a file to overwrite
+```
+
+**Check `setup.format` rather than assuming.** A server older than that parameter ignores
+it and still answers 200, so asking for `PROJECT` is not the same as receiving it.
+
+Nothing returned carries a credential: the steps tell a reader to sign in themselves, out
+of band, so an instance id stays an identifier rather than a key.
+
+Advisory values — `step.kind`, `fragment.merge`, `format` — arrive as enum members when
+this release knows them and as plain strings when it does not, so a value added to the
+server later does not make the whole result unparseable. A `step.kind` you do not
+recognise is not something to execute.

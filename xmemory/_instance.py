@@ -270,6 +270,11 @@ class InstanceAPI:
 
         Not cached, unlike :meth:`describe`: it is computed from the instance's current
         metadata, so an owner who edits a surface hint expects the next call to show it.
+
+        ``format=SetupFormat.PROJECT`` additionally returns the files a customer commits
+        so a whole team gets this instance. Check :attr:`AgentSetupResult.format` on the
+        way out rather than assuming: a server older than that parameter ignores it and
+        still answers 200, so asking is not the same as receiving.
         """
         return self._t.request_one(
             "GET",

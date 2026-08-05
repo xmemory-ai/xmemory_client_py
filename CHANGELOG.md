@@ -25,9 +25,12 @@ already served and the SDKs did not.
 Nothing returned carries a credential: the steps tell a reader to sign in themselves,
 out of band, so an instance id remains an identifier rather than a key.
 
-`AgentSetupSurface.surface` is a plain string rather than an enum, so a server that
-names a surface newer than this release still parses — an additive server change should
-not break an older client.
+Advisory values tolerate what this release has not heard of: `AgentSetupSurface.surface`
+is a plain string, and `AgentSetupStep.kind`, `ProjectFragment.merge` and `format` accept
+an unknown value as a string while still resolving a known one to its enum member. A
+strict enum on any of them would turn an additive server change into a validation error
+over the whole result, not just that field. A `kind` you do not recognise is not
+executable.
 
 ## 0.13.0
 
