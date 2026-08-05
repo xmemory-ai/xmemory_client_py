@@ -647,6 +647,118 @@ class _ApiError(BaseModel):
     details: dict[str, Any] | None = None
 
 
+class SetupFormat(str, Enum):
+    """Which rendering of an instance's setup to ask for.
+
+    ``AGENT`` answers "what do I run right now, here". ``PROJECT`` answers "what do I
+    commit so my team does not each run it by hand" — the same instance, but the output
+    is files rather than steps.
+    """
+
+    AGENT = "agent"
+    PROJECT = "project"
+
+
+class StepKind(str, Enum):
+    """What kind of thing :attr:`AgentSetupStep.command` is.
+
+    The field carries three different things — a shell command, an in-session slash
+    command, and a bare URL — so a caller that runs all of them in a shell will try to
+    execute a connector URL. Check this before running anything.
+    """
+
+    SHELL = "shell"
+    SLASH = "slash"
+    URL = "url"
+
+
+class FragmentMerge(str, Enum):
+    """How a fragment combines with a file the repository may already have.
+
+    Every fragment is a merge, never a file to overwrite: a repository that already has
+    a ``.claude/settings.json`` has permissions, hooks and directory trust in it, and
+    replacing it wholesale to add two keys destroys that. Both merges are idempotent —
+    applying a fragment twice must leave the file as one application would, so an
+    applier that *appends* is implementing neither.
+    """
+
+    MERGE_JSON = "merge_json"
+    MERGE_TOML = "merge_toml"
+
+
+class AgentSetupStep(BaseModel):
+    """One action, with the command that performs it where there is one."""
+
+    description: str
+    command: str | None = None
+    # Absent rather than guessed where the server names no kind, which is also what an
+    # older server sends. Read the absence as "not known to be a shell command".
+    kind: StepKind | None = None
+
+
+class AgentSetupSurface(BaseModel):
+    """How to connect this instance from one agent surface."""
+
+    # A plain string rather than the AgentSurface enum: a server newer than this release
+    # can name a surface this one has never heard of, and refusing to parse the whole
+    # payload over it would make every new surface a breaking change for old clients.
+    surface: str
+    label: str
+    steps: list[AgentSetupStep] = []
+    # What a person still has to do themselves — approve a command, complete a browser
+    # sign-in, trust a hook. Relay these: they are the consent the flow depends on.
+    human_steps: list[str] = []
+
+
+class ProjectFragment(BaseModel):
+    """One file a customer commits so their teammates do not each set this up."""
+
+    path: str
+    purpose: str
+    merge: FragmentMerge
+    content: str
+
+
+class ProjectSetup(BaseModel):
+    """The committable half of an instance's setup.
+
+    ``manual_steps`` is not a leftover: a surface with no committable channel is not the
+    same as one that was forgotten, and a payload that silently omitted it would read as
+    the latter.
+    """
+
+    fragments: list[ProjectFragment] = []
+    manual_steps: list[str] = []
+
+
+class AgentSetupResult(BaseModel):
+    """How to connect one instance, ordered for where it is likely to be used.
+
+    The same payload the create response carries, the ``get_setup_instructions`` MCP
+    tools serve and ``xmemcli instance setup`` prints, so an agent reading this and a
+    person at a terminal follow the same instructions.
+
+    **Carries no credential.** The steps tell a reader to sign in themselves, out of
+    band, precisely so a key never lands in a transcript.
+    """
+
+    instance_id: str
+    instance_name: str
+    install_page_url: str
+    # Ordered most-likely-first, never filtered: a hint about where an instance will be
+    # used is not a restriction on where it may be.
+    surfaces: list[AgentSetupSurface] = []
+    # One line to paste into an agent instead of running anything by hand.
+    paste_to_agent: str = ""
+    # What the server actually rendered, which is not always what was asked for: an
+    # older server ignores an unknown query parameter and answers 200, so a caller
+    # asking for PROJECT can receive the agent payload with no error at all. Compare
+    # this against what you requested rather than inferring from ``project`` being None.
+    format: SetupFormat = SetupFormat.AGENT
+    # Present only when ``format=project`` was both requested and honoured.
+    project: ProjectSetup | None = None
+
+
 class _RawApiResponse(BaseModel):
     ids: list[str] = []
     items: list[Any] = []
