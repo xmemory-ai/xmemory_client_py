@@ -13,6 +13,7 @@ from xmemory import (
     AgentSurface,
     AsyncXmemoryClient,
     BindingTier,
+    FragmentMerge,
     InstanceAPI,
     ObjectCreate,
     ObjectDelete,
@@ -22,6 +23,8 @@ from xmemory import (
     RelationEndpoint,
     RelationMutation,
     SchemaType,
+    SetupFormat,
+    StepKind,
     XmemoryAPIError,
     XmemoryClient,
 )
@@ -219,6 +222,133 @@ def test_admin_get_instance(httpx_mock, client):
 
     assert info.description == "d"
     assert route.called
+
+
+def test_instance_setup_instructions_is_available_without_the_admin_namespace(httpx_mock, client):
+    """The MCP instance connection serves this tool, so an instance handle must too.
+
+    A caller holding an instance handle should not have to reach through ``admin`` for
+    the one question this payload answers, when the same tool sits on the instance
+    connection over MCP.
+    """
+    route = httpx_mock.get(f"/instances/{INSTANCE_ID}/agent_setup").mock(return_value=httpx.Response(200, json=_api_ok([
+        {
+            "instance_id": INSTANCE_ID,
+            "instance_name": "Sprint tracker",
+            "install_page_url": "https://xmemory.ai/install",
+            "surfaces": [],
+            "paste_to_agent": "",
+        },
+    ])))
+
+    setup = client.instance(INSTANCE_ID).setup_instructions()
+
+    assert setup.instance_id == INSTANCE_ID
+    assert route.called
+
+
+def test_admin_get_setup_instructions(httpx_mock, client):
+    route = httpx_mock.get(f"/instances/{INSTANCE_ID}/agent_setup").mock(return_value=httpx.Response(200, json=_api_ok([
+        {
+            "instance_id": INSTANCE_ID,
+            "instance_name": "Sprint tracker",
+            "install_page_url": "https://xmemory.ai/install",
+            "surfaces": [
+                {
+                    "surface": "claude_code",
+                    "label": "Claude Code",
+                    "steps": [{"description": "Install it.", "command": "claude plugin install x", "kind": "shell"}],
+                    "human_steps": ["Approve each command when the agent asks to run it."],
+                },
+            ],
+            "paste_to_agent": "Connect xmemory instance ...",
+            "format": "agent",
+            "project": None,
+        },
+    ])))
+
+    setup = client.admin.get_setup_instructions(INSTANCE_ID)
+
+    assert setup.instance_name == "Sprint tracker"
+    assert setup.surfaces[0].steps[0].kind is StepKind.SHELL
+    # Relayed, not dropped: they are the consent the flow depends on.
+    assert setup.surfaces[0].human_steps
+    assert setup.format is SetupFormat.AGENT
+    assert route.called
+    assert route.calls.last.request.url.params["format"] == "agent"
+
+
+def test_admin_setup_instructions_asks_for_the_project_format(httpx_mock, client):
+    route = httpx_mock.get(f"/instances/{INSTANCE_ID}/agent_setup").mock(return_value=httpx.Response(200, json=_api_ok([
+        {
+            "instance_id": INSTANCE_ID,
+            "instance_name": "Sprint tracker",
+            "install_page_url": "https://xmemory.ai/install",
+            "surfaces": [],
+            "paste_to_agent": "",
+            "format": "project",
+            "project": {
+                "fragments": [
+                    {"path": ".mcp.json", "purpose": "point the team at it", "merge": "merge_json", "content": "{}"},
+                ],
+                "manual_steps": ["Each teammate signs in once."],
+            },
+        },
+    ])))
+
+    setup = client.admin.get_setup_instructions(INSTANCE_ID, format=SetupFormat.PROJECT)
+
+    assert route.calls.last.request.url.params["format"] == "project"
+    assert setup.project is not None
+    # A merge, never a file to overwrite — a repository's existing config must survive.
+    assert setup.project.fragments[0].merge is FragmentMerge.MERGE_JSON
+    assert setup.project.manual_steps
+
+
+def test_admin_setup_instructions_reports_the_format_actually_rendered(httpx_mock, client):
+    """A server older than ``format`` ignores it and still answers 200.
+
+    So asking for the project rendering is not the same as receiving it, and a caller
+    that inferred success from the request would read an agent payload as "this
+    instance has nothing committable". The echoed field is the only way to tell.
+    """
+    httpx_mock.get(f"/instances/{INSTANCE_ID}/agent_setup").mock(return_value=httpx.Response(200, json=_api_ok([
+        {
+            "instance_id": INSTANCE_ID,
+            "instance_name": "Sprint tracker",
+            "install_page_url": "https://xmemory.ai/install",
+            "surfaces": [],
+            "paste_to_agent": "",
+        },
+    ])))
+
+    setup = client.admin.get_setup_instructions(INSTANCE_ID, format=SetupFormat.PROJECT)
+
+    assert setup.format is SetupFormat.AGENT, "an omitted format means the server rendered the default"
+    assert setup.project is None
+
+
+def test_admin_setup_instructions_survives_a_surface_it_has_never_heard_of(httpx_mock, client):
+    """A server may name a surface newer than this release.
+
+    Typing ``surface`` as the AgentSurface enum would make every new surface a breaking
+    change for every older client, which is the opposite of what an additive server
+    change should cost.
+    """
+    httpx_mock.get(f"/instances/{INSTANCE_ID}/agent_setup").mock(return_value=httpx.Response(200, json=_api_ok([
+        {
+            "instance_id": INSTANCE_ID,
+            "instance_name": "Sprint tracker",
+            "install_page_url": "https://xmemory.ai/install",
+            "surfaces": [{"surface": "some_future_client", "label": "Future", "steps": [], "human_steps": []}],
+            "paste_to_agent": "",
+            "unknown_field_from_a_newer_server": True,
+        },
+    ])))
+
+    setup = client.admin.get_setup_instructions(INSTANCE_ID)
+
+    assert setup.surfaces[0].surface == "some_future_client"
 
 
 def test_admin_generate_schema(httpx_mock, client):

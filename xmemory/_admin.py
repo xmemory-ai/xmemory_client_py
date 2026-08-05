@@ -7,11 +7,13 @@ from typing import Any
 from xmemory._instance import AsyncInstanceAPI, InstanceAPI
 from xmemory._models import (
     UNSET,
+    AgentSetupResult,
     ClusterInfo,
     GenerateSchemaResult,
     InstanceInfo,
     InstanceSchemaInfo,
     SchemaType,
+    SetupFormat,
     UnsetType,
     _CreateInstanceRequest,
     _DryRunMigrationRequest,
@@ -116,6 +118,38 @@ class AdminAPI:
     def get_instance(self, instance_id: str, *, timeout: float | None = None) -> InstanceInfo:
         """Get a single instance by ID."""
         return self._t.request_one("GET", f"/instances/{instance_id}", InstanceInfo, timeout=timeout)
+
+    def get_setup_instructions(
+        self,
+        instance_id: str,
+        *,
+        format: SetupFormat | str = SetupFormat.AGENT,
+        timeout: float | None = None,
+    ) -> AgentSetupResult:
+        """How to connect this instance on an agent surface, most likely first.
+
+        Answers "how do I also connect this somewhere else" — a desktop client, another
+        editor, a teammate's machine — rather than how to reach it from here, which this
+        client is already doing.
+
+        Computed from the instance's current metadata, so editing its surface hints
+        changes the next response. **Carries no credential:** the steps tell a reader to
+        sign in themselves, out of band, so nothing here is a secret and an instance id
+        is an identifier rather than a key.
+
+        ``format=SetupFormat.PROJECT`` additionally returns the files a customer commits
+        so a whole team gets this instance without each person running the steps. Check
+        :attr:`AgentSetupResult.format` on the way out: a server older than that
+        parameter ignores it and still answers 200, so asking is not the same as
+        receiving.
+        """
+        return self._t.request_one(
+            "GET",
+            f"/instances/{instance_id}/agent_setup",
+            AgentSetupResult,
+            params={"format": format.value if isinstance(format, SetupFormat) else format},
+            timeout=timeout,
+        )
 
     def generate_schema(
         self,
@@ -417,6 +451,26 @@ class AsyncAdminAPI:
     async def get_instance(self, instance_id: str, *, timeout: float | None = None) -> InstanceInfo:
         """Get a single instance by ID."""
         return await self._t.request_one("GET", f"/instances/{instance_id}", InstanceInfo, timeout=timeout)
+
+    async def get_setup_instructions(
+        self,
+        instance_id: str,
+        *,
+        format: SetupFormat | str = SetupFormat.AGENT,
+        timeout: float | None = None,
+    ) -> AgentSetupResult:
+        """How to connect this instance on an agent surface, most likely first.
+
+        Async counterpart of :meth:`AdminClient.get_setup_instructions`; see there for
+        what the payload is and why it carries no credential.
+        """
+        return await self._t.request_one(
+            "GET",
+            f"/instances/{instance_id}/agent_setup",
+            AgentSetupResult,
+            params={"format": format.value if isinstance(format, SetupFormat) else format},
+            timeout=timeout,
+        )
 
     async def generate_schema(
         self,

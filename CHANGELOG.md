@@ -2,6 +2,33 @@
 
 All notable changes to `xmemory-ai` are documented here.
 
+## 0.14.0
+
+Adds the connect instructions for an instance — how to reach the same memory from
+another agent surface — which the API, the MCP tools and `xmemcli instance setup`
+already served and the SDKs did not.
+
+### Added
+
+- `AdminAPI.get_setup_instructions(instance_id)` and `InstanceAPI.setup_instructions()`,
+  with async counterparts. On both because the MCP instance connection serves the same
+  tool, so a caller holding an instance handle should not have to reach through `admin`.
+- `format=SetupFormat.PROJECT` additionally returns the files a customer commits so a
+  whole team gets an instance without each person running the steps by hand. Read
+  `AgentSetupResult.format` on the way out: a server older than that parameter ignores
+  it and still answers 200, so asking is not the same as receiving.
+- New exports: `AgentSetupResult`, `AgentSetupSurface`, `AgentSetupStep`, `ProjectSetup`,
+  `ProjectFragment`, `SetupFormat`, `StepKind`, `FragmentMerge`.
+
+### Notes
+
+Nothing returned carries a credential: the steps tell a reader to sign in themselves,
+out of band, so an instance id remains an identifier rather than a key.
+
+`AgentSetupSurface.surface` is a plain string rather than an enum, so a server that
+names a surface newer than this release still parses — an additive server change should
+not break an older client.
+
 ## 0.13.0
 
 Surfaces the agent-facing instance metadata the API already returns: what a

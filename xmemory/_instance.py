@@ -5,6 +5,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from xmemory._models import (
+    AgentSetupResult,
     AsyncWriteResult,
     DescribeResult,
     ExtractResult,
@@ -13,6 +14,7 @@ from xmemory._models import (
     ReadMode,
     ReadResult,
     ReadScope,
+    SetupFormat,
     WriteMutation,
     WriteResult,
     WriteStatusResult,
@@ -251,6 +253,32 @@ class InstanceAPI:
             self._describe_cache_at = time.monotonic()
         return result
 
+    def setup_instructions(
+        self,
+        *,
+        format: SetupFormat | str = SetupFormat.AGENT,
+        timeout: float | None = None,
+    ) -> AgentSetupResult:
+        """How to connect *this* instance somewhere else, most likely surface first.
+
+        Answers "how do I also reach this memory on my desktop, or in another editor" —
+        not how to reach it from here, which this handle already does. The same payload
+        ``get_setup_instructions`` serves over MCP and ``xmemcli instance setup`` prints.
+
+        **Carries no credential.** The steps tell a reader to sign in themselves, out of
+        band, so nothing returned here is a secret.
+
+        Not cached, unlike :meth:`describe`: it is computed from the instance's current
+        metadata, so an owner who edits a surface hint expects the next call to show it.
+        """
+        return self._t.request_one(
+            "GET",
+            f"/instances/{self._id}/agent_setup",
+            AgentSetupResult,
+            params={"format": format.value if isinstance(format, SetupFormat) else format},
+            timeout=timeout,
+        )
+
     def clear_describe_cache(self) -> None:
         """Clear the cached describe result so the next ``describe()`` call fetches fresh data."""
         with self._describe_lock:
@@ -448,6 +476,21 @@ class AsyncInstanceAPI:
         self._describe_cache = result
         self._describe_cache_at = now
         return result
+
+    async def setup_instructions(
+        self,
+        *,
+        format: SetupFormat | str = SetupFormat.AGENT,
+        timeout: float | None = None,
+    ) -> AgentSetupResult:
+        """Async counterpart of :meth:`InstanceAPI.setup_instructions`."""
+        return await self._t.request_one(
+            "GET",
+            f"/instances/{self._id}/agent_setup",
+            AgentSetupResult,
+            params={"format": format.value if isinstance(format, SetupFormat) else format},
+            timeout=timeout,
+        )
 
     def clear_describe_cache(self) -> None:
         """Clear the cached describe result so the next ``describe()`` call fetches fresh data."""
