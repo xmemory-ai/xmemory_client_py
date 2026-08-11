@@ -188,10 +188,12 @@ inst = client.instance("<instance-id>")
 # Read
 result = inst.read("Who is on the team?")
 print(result.reader_result)
+print(result.console_url)  # this read's trace in the console; None if none is configured
 
 # Write (synchronous)
 result = inst.write("Bob joined the team on Monday as a designer.")
-print(result.changes)  # what the write created / updated / deleted
+print(result.changes)     # what the write created / updated / deleted
+print(result.console_url)  # the same link for the write
 
 # Write (async job)
 job = inst.write_async("Bob joined the team on Monday as a designer.")

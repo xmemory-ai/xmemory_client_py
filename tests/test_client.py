@@ -770,6 +770,68 @@ def test_instance_extract(httpx_mock, client):
 
 
 # ---------------------------------------------------------------------------
+# Console links
+#
+# The server sends ``console_url`` on every data operation and this client dropped
+# it, so citing a recalled record with a link meant rebuilding the URL from a trace
+# id and a hostname the caller had to know.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "path,call,payload",
+    [
+        (
+            "read",
+            lambda inst: inst.read("Who is Bob?"),
+            {"trace_id": "r-1", "console_url": "https://console.xmemory.ai/read/r-1"},
+        ),
+        (
+            "write",
+            lambda inst: inst.write("Bob is an engineer."),
+            {"write_id": "w-1", "console_url": "https://console.xmemory.ai/write/w-1"},
+        ),
+        (
+            "write_async",
+            lambda inst: inst.write_async("Bob is an engineer."),
+            {"write_id": "w-1", "console_url": "https://console.xmemory.ai/write/w-1"},
+        ),
+        (
+            "write_status",
+            lambda inst: inst.write_status("w-1"),
+            {"write_id": "w-1", "write_status": "completed", "console_url": "https://console.xmemory.ai/write/w-1"},
+        ),
+        (
+            "extract",
+            lambda inst: inst.extract("Bob is an engineer."),
+            {"trace_id": "e-1", "console_url": "https://console.xmemory.ai/extract/e-1"},
+        ),
+    ],
+)
+def test_every_operation_carries_its_console_link(httpx_mock, client, path, call, payload):
+    httpx_mock.post(f"/instances/{INSTANCE_ID}/{path}").mock(
+        return_value=httpx.Response(200, json=_api_ok([payload])),
+    )
+
+    resp = call(client.instance(INSTANCE_ID))
+
+    assert resp.console_url == payload["console_url"]
+
+
+def test_a_deployment_without_a_console_reports_no_link(httpx_mock, client):
+    # Self-hosting without a console is ordinary, and the server omits the field
+    # entirely when none is configured. A caller has to be able to tell "no link
+    # exists" from a broken one, so this stays None rather than an empty string.
+    httpx_mock.post(f"/instances/{INSTANCE_ID}/write").mock(
+        return_value=httpx.Response(200, json=_api_ok([{"write_id": "w-1"}])),
+    )
+
+    resp = client.instance(INSTANCE_ID).write("Bob is an engineer.")
+
+    assert resp.console_url is None
+
+
+# ---------------------------------------------------------------------------
 # InstanceAPI — instance management
 # ---------------------------------------------------------------------------
 
