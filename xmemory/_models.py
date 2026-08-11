@@ -151,8 +151,20 @@ class TaggedReaderResult(BaseModel):
     error: str | None = None
 
 
+# Every result below carries ``console_url``: the deep link to that operation's trace in
+# the xmemory console. The server has always sent it and this client dropped it, which
+# left the one instruction xmemory ships about citing what an agent recalled — name the
+# record, link the read that produced it — impossible to follow through this library
+# without rebuilding the URL from ``trace_id`` and a hostname the caller had to know.
+#
+# It is per operation, not per record, and ``None`` whenever the server has no console
+# configured — a self-hosted deployment without one is ordinary, so a caller rendering
+# this must handle its absence rather than assume a link.
+
+
 class ReadResult(BaseModel):
     trace_id: str | None = None
+    console_url: str | None = None
     reader_result: Any = None
     # Per-sub-query answers when the server decomposed the query into independent
     # sub-queries. One entry per sub-query (a single-intent query yields exactly
@@ -164,6 +176,7 @@ class ReadResult(BaseModel):
 class WriteResult(BaseModel):
     write_id: str
     trace_id: str | None = None
+    console_url: str | None = None
     # What the write did, grouped into ``created`` / ``updated`` / ``deleted``.
     # Absent (``None``) on responses from an older server.
     changes: Any = None
@@ -171,17 +184,23 @@ class WriteResult(BaseModel):
 
 class AsyncWriteResult(BaseModel):
     write_id: str
+    # Both dropped here until now, so the fire-and-forget path — the one this client
+    # recommends for writes — was the one with no way to point at what it did.
+    trace_id: str | None = None
+    console_url: str | None = None
 
 
 class WriteStatusResult(BaseModel):
     write_id: str
     write_status: WriteQueueStatus
+    console_url: str | None = None
     error_detail: str | None = None
     completed_at: datetime | None = None
 
 
 class ExtractResult(BaseModel):
     trace_id: str | None = None
+    console_url: str | None = None
     objects_extracted: Any = None
 
 

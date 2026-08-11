@@ -2,6 +2,29 @@
 
 All notable changes to `xmemory-ai` are documented here.
 
+## 0.15.0
+
+Surfaces the console link the API has always sent with every data operation and this
+client dropped.
+
+### Added
+
+- `console_url` on `ReadResult`, `WriteResult`, `AsyncWriteResult`, `WriteStatusResult`
+  and `ExtractResult` — the deep link to that operation's trace in the xmemory console.
+  `AsyncWriteResult` gains `trace_id` in the same pass: the fire-and-forget path this
+  library recommends for writes was the one with no way to point at what it did.
+
+### Notes
+
+The link is per operation, not per record, and it is `None` whenever the server has no
+console configured — self-hosting without one is ordinary, so a caller rendering it must
+handle its absence rather than assume a link is always there.
+
+Why it matters beyond convenience: the one instruction xmemory ships about how an agent
+should talk about recalled data asks it to name the record an answer rests on and link
+the read that produced it. Through this library that was not followable without
+rebuilding the URL from a trace id and a hostname the caller had to know.
+
 ## 0.14.0
 
 Adds the connect instructions for an instance — how to reach the same memory from
