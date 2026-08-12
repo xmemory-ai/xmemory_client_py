@@ -235,7 +235,9 @@ class InstanceAPI:
     # -- Describe (agent tool descriptions) -----------------------------------
 
     def describe(self, *, timeout: float | None = None) -> DescribeResult:
-        """Return agent-facing tool descriptions enriched with the instance schema.
+        """Return the agent-facing tool descriptions for this instance.
+
+        The instance's schema comes back in :attr:`DescribeResult.schema_summary`.
 
         Results are cached locally with a TTL (default 5 min).
         Call ``clear_describe_cache()`` to force a refresh.
@@ -467,7 +469,9 @@ class AsyncInstanceAPI:
     # -- Describe (agent tool descriptions) -----------------------------------
 
     async def describe(self, *, timeout: float | None = None) -> DescribeResult:
-        """Return agent-facing tool descriptions enriched with the instance schema.
+        """Return the agent-facing tool descriptions for this instance.
+
+        The instance's schema comes back in :attr:`DescribeResult.schema_summary`.
 
         Results are cached locally with a TTL (default 5 min).
         Call ``clear_describe_cache()`` to force a refresh.
