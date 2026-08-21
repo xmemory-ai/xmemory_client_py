@@ -14,6 +14,7 @@ from xmemory._models import (
     ReadMode,
     ReadResult,
     ReadScope,
+    WriteScope,
     SetupFormat,
     WriteMutation,
     WriteResult,
@@ -42,12 +43,17 @@ def _build_write_request(
     structured_mutations: list[WriteMutation | dict[str, Any]] | None,
     extraction_logic: ExtractionLogic,
     diff_engine: bool | None,
+    scope: WriteScope | None,
 ) -> _WriteRequest:
     """Validate the text/structured_mutations exclusivity and build the request body."""
     if bool(text) == (structured_mutations is not None):
         raise ValueError("Provide exactly one of 'text' or 'structured_mutations'.")
     if structured_mutations is not None and not structured_mutations:
         raise ValueError("'structured_mutations' must contain at least one mutation.")
+    # Structured mutations bypass extraction, so there is nothing for a scope to
+    # anchor; the server rejects the combination and so does this.
+    if scope is not None and structured_mutations is not None:
+        raise ValueError("'scope' and 'structured_mutations' are mutually exclusive.")
     return _WriteRequest(
         text=text,
         extraction_logic=extraction_logic,
@@ -55,6 +61,7 @@ def _build_write_request(
         structured_mutations=None if structured_mutations is None else [
             m.model_dump() if isinstance(m, BaseModel) else m for m in structured_mutations
         ],
+        scope=scope,
     )
 
 
@@ -103,6 +110,7 @@ class InstanceAPI:
         structured_mutations: list[WriteMutation | dict[str, Any]] | None = None,
         extraction_logic: ExtractionLogic = ExtractionLogic.FAST,
         diff_engine: bool | None = None,
+        scope: WriteScope | None = None,
         timeout: float | None = None,
     ) -> WriteResult:
         """Write to this instance: extract from free text, or apply structured mutations.
@@ -118,10 +126,21 @@ class InstanceAPI:
         a ``None`` value in a mutation's ``values`` clears that field.
 
         ``extraction_logic`` and ``diff_engine`` only affect the ``text`` path.
+
+        Pass ``scope`` — a `WriteScope` of concrete existing objects, each named
+        by its primary key or its xuid — to anchor a text write to them. Their
+        current values are shown to the extractor so the write updates them
+        instead of creating duplicates, and the write is then confined to the
+        scope: it may only modify or delete the scoped objects and create new
+        objects and relations anchored to them. A write that would touch any
+        other existing object fails. Scope applies to text writes only, the
+        server accepts it with fast extraction only, and it additionally
+        requires read permission on the instance, because the scoped objects'
+        values are shown to the extractor.
         """
         return self._t.request_one(
             "POST", f"/instances/{self._id}/write", WriteResult,
-            body=_build_write_request(text, structured_mutations, extraction_logic, diff_engine),
+            body=_build_write_request(text, structured_mutations, extraction_logic, diff_engine, scope),
             timeout=timeout,
         )
 
@@ -132,16 +151,18 @@ class InstanceAPI:
         structured_mutations: list[WriteMutation | dict[str, Any]] | None = None,
         extraction_logic: ExtractionLogic = ExtractionLogic.FAST,
         diff_engine: bool | None = None,
+        scope: WriteScope | None = None,
         timeout: float | None = None,
     ) -> AsyncWriteResult:
         """Submit a write job and return immediately with a write_id for polling.
 
         Accepts the same ``text`` / ``structured_mutations`` dual input as
-        :meth:`write` (exactly one of the two).
+        `write` (exactly one of the two), and the same ``scope``. A scope
+        violation is reported by `write_status` as a failed write.
         """
         return self._t.request_one(
             "POST", f"/instances/{self._id}/write_async", AsyncWriteResult,
-            body=_build_write_request(text, structured_mutations, extraction_logic, diff_engine),
+            body=_build_write_request(text, structured_mutations, extraction_logic, diff_engine, scope),
             timeout=timeout,
         )
 
@@ -337,6 +358,7 @@ class AsyncInstanceAPI:
         structured_mutations: list[WriteMutation | dict[str, Any]] | None = None,
         extraction_logic: ExtractionLogic = ExtractionLogic.FAST,
         diff_engine: bool | None = None,
+        scope: WriteScope | None = None,
         timeout: float | None = None,
     ) -> WriteResult:
         """Write to this instance: extract from free text, or apply structured mutations.
@@ -352,10 +374,21 @@ class AsyncInstanceAPI:
         a ``None`` value in a mutation's ``values`` clears that field.
 
         ``extraction_logic`` and ``diff_engine`` only affect the ``text`` path.
+
+        Pass ``scope`` — a `WriteScope` of concrete existing objects, each named
+        by its primary key or its xuid — to anchor a text write to them. Their
+        current values are shown to the extractor so the write updates them
+        instead of creating duplicates, and the write is then confined to the
+        scope: it may only modify or delete the scoped objects and create new
+        objects and relations anchored to them. A write that would touch any
+        other existing object fails. Scope applies to text writes only, the
+        server accepts it with fast extraction only, and it additionally
+        requires read permission on the instance, because the scoped objects'
+        values are shown to the extractor.
         """
         return await self._t.request_one(
             "POST", f"/instances/{self._id}/write", WriteResult,
-            body=_build_write_request(text, structured_mutations, extraction_logic, diff_engine),
+            body=_build_write_request(text, structured_mutations, extraction_logic, diff_engine, scope),
             timeout=timeout,
         )
 
@@ -366,16 +399,18 @@ class AsyncInstanceAPI:
         structured_mutations: list[WriteMutation | dict[str, Any]] | None = None,
         extraction_logic: ExtractionLogic = ExtractionLogic.FAST,
         diff_engine: bool | None = None,
+        scope: WriteScope | None = None,
         timeout: float | None = None,
     ) -> AsyncWriteResult:
         """Submit a write job and return immediately with a write_id for polling.
 
         Accepts the same ``text`` / ``structured_mutations`` dual input as
-        :meth:`write` (exactly one of the two).
+        `write` (exactly one of the two), and the same ``scope``. A scope
+        violation is reported by `write_status` as a failed write.
         """
         return await self._t.request_one(
             "POST", f"/instances/{self._id}/write_async", AsyncWriteResult,
-            body=_build_write_request(text, structured_mutations, extraction_logic, diff_engine),
+            body=_build_write_request(text, structured_mutations, extraction_logic, diff_engine, scope),
             timeout=timeout,
         )
 

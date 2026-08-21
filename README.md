@@ -293,9 +293,65 @@ result = inst.read(
 )
 ```
 
-Each `ScopeObject` is identified by its **user-defined primary key** (the same
-field name(s) used in your schema), not an internal id. `key` must contain at
-least one field. Scoped reads compose with `read_mode`.
+Each `ScopeObject` names one object by its `type` plus **exactly one** identity:
+`key` — its user-defined primary key, using the same field name(s) as your
+schema, with one entry per primary-key field — or `xuid`, the object's xuid.
+The `xuid` form is the only way to name an object whose type has no
+user-defined primary key. Scoped reads compose with `read_mode`.
+
+#### Scoped writes
+
+A write is normally free to touch anything in the instance: the extractor sees
+the text alone, and whatever it produces is reconciled against the whole
+instance. Pass a `scope` to anchor a text write to a set of concrete existing
+objects instead:
+
+```python
+from xmemory import ScopeObject, WriteScope
+
+result = inst.write(
+    "After her promotion she is a surgeon, and her desk phone is +1-555-0100.",
+    scope=WriteScope(
+        objects=[ScopeObject(type="Person", key={"name": "Alice Johnson"})],
+    ),
+)
+```
+
+This does two things at once. The scoped objects' **current values** are shown
+to the extractor, so the new information is folded into them instead of
+producing a near-duplicate record. And the write is then **confined** to the
+scope: it may only modify or delete the scoped objects, and create new objects
+and relations anchored to them. A write that would touch any other existing
+object fails with a validation error rather than applying partially — that
+confinement is checked against the resulting plan, so it holds regardless of
+what the extractor produced.
+
+`WriteScope` takes the same `ScopeObject`s as `ReadScope`, so the `xuid` form
+works here too:
+
+```python
+result = inst.write(
+    "Add a note that the migration finished.",
+    scope=WriteScope(objects=[ScopeObject(type="Project", xuid=project_xuid)]),
+)
+```
+
+Unlike `ReadScope` there is no `relations_scope`: the relations among the scoped
+objects always accompany the extraction hint.
+
+Things to know before reaching for it:
+
+- Scope applies to **text writes only** — combining it with
+  `structured_mutations` raises a `ValueError`, since those bypass extraction
+  entirely and there is nothing for a scope to anchor.
+- The server currently accepts a scope with **fast extraction only**, and caps
+  the number of scoped objects per write. Both are server-side rules, so they
+  surface as an `XmemoryAPIError`.
+- A scoped write additionally requires **read** permission on the instance,
+  because the scoped objects' current values are shown to the extractor. An API
+  key with write access alone is refused.
+- `write_async` accepts the same `scope`; a scope violation surfaces through
+  `write_status` as a failed write.
 
 #### Extraction logic
 
