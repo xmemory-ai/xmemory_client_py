@@ -293,11 +293,10 @@ result = inst.read(
 )
 ```
 
-Each `ScopeObject` names one object by its `type` plus **exactly one** identity:
-`key` — its user-defined primary key, using the same field name(s) as your
-schema, with one entry per primary-key field — or `xuid`, the object's xuid.
-The `xuid` form is the only way to name an object whose type has no
-user-defined primary key. Scoped reads compose with `read_mode`.
+Each `ScopeObject` names one object by its `type` plus its user-defined primary
+`key`, using the same field name(s) as your schema, with one entry per
+primary-key field. Only objects of a type that has a user-defined primary key
+can be scoped. Scoped reads compose with `read_mode`.
 
 #### Scoped writes
 
@@ -326,24 +325,18 @@ object fails with a validation error rather than applying partially — that
 confinement is checked against the resulting plan, so it holds regardless of
 what the extractor produced.
 
-`WriteScope` takes the same `ScopeObject`s as `ReadScope`, so the `xuid` form
-works here too:
-
-```python
-result = inst.write(
-    "Add a note that the migration finished.",
-    scope=WriteScope(objects=[ScopeObject(type="Project", xuid=project_xuid)]),
-)
-```
-
-Unlike `ReadScope` there is no `relations_scope`: the relations among the scoped
-objects always accompany the extraction hint.
+`WriteScope` takes the same `ScopeObject`s as `ReadScope`, identified the same
+way. Unlike `ReadScope` there is no `relations_scope`: the relations among the
+scoped objects always accompany the extraction hint.
 
 Things to know before reaching for it:
 
 - Scope applies to **text writes only** — combining it with
   `structured_mutations` raises a `ValueError`, since those bypass extraction
   entirely and there is nothing for a scope to anchor.
+- Only objects of a type with a **user-defined primary key** can be scoped. A
+  scope names records by that key, so a type declared `primary_key: []` has
+  nothing to name its records by.
 - The server currently accepts a scope with **fast extraction only**, and caps
   the number of scoped objects per write. Both are server-side rules, so they
   surface as an `XmemoryAPIError`.

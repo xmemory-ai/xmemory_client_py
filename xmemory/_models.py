@@ -456,33 +456,25 @@ class ScopeObject(BaseModel):
     """One concrete object a scoped read or a scoped write is allowed to touch.
 
     Identify the object by its ``type`` (PascalCase class name or snake_case
-    table name) plus exactly one of:
+    table name) plus its user-defined primary ``key`` — a mapping of primary-key
+    field name to value, with one entry for every primary-key field. Only objects
+    of a type that has a user-defined primary key can be scoped.
 
-    - ``key`` — its user-defined primary key, a mapping of primary-key field name
-      to value, with one entry for every primary-key field; or
-    - ``xuid`` — the object's xuid. This is the only way to name an object whose
-      type has no user-defined primary key.
-
-    Serialized to the API's identity wire shape — ``{"type": ..., "key": {"key": {...}}}``
-    or ``{"type": ..., "key": {"xuid": ...}}``.
+    Serialized to the API's identity wire shape — ``{"type": ..., "key": {"key": {...}}}``.
     """
 
     type: str
-    key: dict[str, str | int | float | bool] | None = None
-    xuid: str | None = None
+    key: dict[str, str | int | float | bool]
 
     @model_validator(mode="after")
-    def _exactly_one_identity(self) -> ScopeObject:
-        if (self.key is None) == (self.xuid is None):
-            raise ValueError("ScopeObject needs exactly one of 'key' or 'xuid'.")
-        if self.key is not None and not self.key:
+    def _non_empty_key(self) -> ScopeObject:
+        if not self.key:
             raise ValueError("ScopeObject 'key' must contain at least one primary-key field.")
         return self
 
     @model_serializer
     def _serialize(self) -> dict[str, Any]:
-        identity: dict[str, Any] = {"xuid": self.xuid} if self.xuid is not None else {"key": self.key}
-        return {"type": self.type, "key": identity}
+        return {"type": self.type, "key": {"key": self.key}}
 
 
 class ReadScope(BaseModel):

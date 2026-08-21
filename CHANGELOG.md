@@ -24,12 +24,11 @@ information into and confines the result to those records.
 - `WriteScope`, re-exported from `xmemory`. It carries only `objects` — unlike
   `ReadScope` there is no relation policy, because the relations among the
   scoped objects always accompany the hint.
-- `ScopeObject.xuid`, an alternative to `key` for both read and write scopes.
-  A `ScopeObject` now takes exactly one of the two. This is not a convenience:
-  an object whose type has no user-defined primary key has no `key` to name it
-  by, so before this it could not be scoped at all.
-
 ### Notes
+
+A scope names its objects by user-defined primary key, so only types that
+declare one can be scoped. That is deliberate: it keeps a scope expressed in the
+same identity the rest of your schema uses, rather than in server-generated ids.
 
 Scope applies to text writes only. Combining it with `structured_mutations`
 raises a `ValueError` here rather than travelling to the server, because those
