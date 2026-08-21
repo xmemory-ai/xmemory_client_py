@@ -39,7 +39,6 @@ from xmemory import (
 CLUSTER_ID = str(uuid.uuid4())
 INSTANCE_ID = str(uuid.uuid4())
 ORG_ID = str(uuid.uuid4())
-XUID = str(uuid.uuid4())
 
 
 def _api_ok(items: list[dict], ids: list[str] | None = None) -> dict:
@@ -1331,27 +1330,13 @@ def test_scope_defaults_to_no_relations() -> None:
     assert ReadScope(objects=[ScopeObject(type="Person", key={"name": "Bob"})]).relations_scope == "no_relations"
 
 
-def test_scope_object_requires_exactly_one_identity() -> None:
+def test_scope_object_requires_a_non_empty_key() -> None:
     from xmemory import ScopeObject
 
     with pytest.raises(Exception):
-        ScopeObject(type="Person")
+        ScopeObject(type="Person")  # type: ignore[call-arg]  # key is required
     with pytest.raises(Exception):
         ScopeObject(type="Person", key={})
-    with pytest.raises(Exception):
-        ScopeObject(type="Person", key={"name": "Alice"}, xuid=XUID)
-
-
-def test_scope_object_by_xuid_serializes_to_the_xuid_identity() -> None:
-    """The xuid form is the only way to name an object of a type with no primary key."""
-    from xmemory import ReadScope, ScopeObject
-    from xmemory._models import ReadMode, _ReadRequest
-
-    scope = ReadScope(objects=[ScopeObject(type="Note", xuid=XUID)])
-    body = _ReadRequest(query="q", mode=ReadMode.SINGLE_ANSWER, scope=scope).model_dump(
-        by_alias=True, exclude_none=True
-    )
-    assert body["scope"]["objects"] == [{"type": "Note", "key": {"xuid": XUID}}]
 
 
 def test_scoped_write_sends_the_write_scope_wire_shape(httpx_mock, client):
@@ -1380,11 +1365,13 @@ def test_scoped_write_async_sends_the_write_scope_wire_shape(httpx_mock, client)
 
     client.instance(INSTANCE_ID).write_async(
         "She moved to the London office.",
-        scope=WriteScope(objects=[ScopeObject(type="Person", xuid=XUID)]),
+        scope=WriteScope(objects=[ScopeObject(type="Person", key={"name": "Alice Johnson"})]),
     )
 
     body = json.loads(route.calls.last.request.content)
-    assert body["scope"] == {"objects": [{"type": "Person", "key": {"xuid": XUID}}]}
+    assert body["scope"] == {
+        "objects": [{"type": "Person", "key": {"key": {"name": "Alice Johnson"}}}],
+    }
 
 
 def test_unscoped_write_omits_the_scope_key(httpx_mock, client):

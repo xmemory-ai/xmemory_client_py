@@ -128,7 +128,7 @@ class InstanceAPI:
         ``extraction_logic`` and ``diff_engine`` only affect the ``text`` path.
 
         Pass ``scope`` — a `WriteScope` of concrete existing objects, each named
-        by its primary key or its xuid — to anchor a text write to them. Their
+        by its user-defined primary key — to anchor a text write to them. Their
         current values are shown to the extractor so the write updates them
         instead of creating duplicates, and the write is then confined to the
         scope: it may only modify or delete the scoped objects and create new
@@ -376,7 +376,7 @@ class AsyncInstanceAPI:
         ``extraction_logic`` and ``diff_engine`` only affect the ``text`` path.
 
         Pass ``scope`` — a `WriteScope` of concrete existing objects, each named
-        by its primary key or its xuid — to anchor a text write to them. Their
+        by its user-defined primary key — to anchor a text write to them. Their
         current values are shown to the extractor so the write updates them
         instead of creating duplicates, and the write is then confined to the
         scope: it may only modify or delete the scoped objects and create new
