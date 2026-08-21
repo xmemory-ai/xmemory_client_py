@@ -52,6 +52,33 @@ relations: {}
 """
 
 
+KEYLESS_SCHEMA_YML = """\
+objects:
+  person:
+    fields:
+      name:
+        type: str
+        required: true
+        description: full name of the person
+      role:
+        type: str
+        required: false
+        description: job title or role
+  note:
+    primary_key: []
+    fields:
+      body:
+        type: str
+        required: true
+        description: free-form note text
+      status:
+        type: str
+        required: false
+        description: current status of what the note describes
+relations: {}
+"""
+
+
 @pytest.fixture(scope="module")
 def client():
     c = XmemoryClient(url=BASE_URL, token=API_KEY)
@@ -68,6 +95,21 @@ def instance(client):
     inst = client.admin.create_instance(
         cluster_id, "e2e-test-instance", SCHEMA_YML, SchemaType.YML,
         description="End-to-end test instance",
+    )
+    yield inst, client
+    try:
+        client.admin.delete_instance(str(inst.id))
+    except XmemoryAPIError:
+        pass
+
+
+@pytest.fixture()
+def keyless_instance(client):
+    clusters = client.admin.list_clusters()
+    assert len(clusters) > 0, "No clusters found"
+    inst = client.admin.create_instance(
+        str(clusters[0].id), "e2e-keyless-instance", KEYLESS_SCHEMA_YML, SchemaType.YML,
+        description="End-to-end test instance with a keyless object type",
     )
     yield inst, client
     try:
@@ -266,4 +308,31 @@ def test_scoped_write_with_deep_extraction_is_refused_by_the_server(instance):
             "She now works in Boston.",
             extraction_logic=ExtractionLogic.DEEP,
             scope=WriteScope(objects=[ScopeObject(type="person", key={"name": "Alice Johnson"})]),
+        )
+
+
+def test_scoped_write_by_xuid_anchors_to_a_keyless_record(keyless_instance):
+    """A keyless type has no primary key, so xuid is the only way to scope to it."""
+    inst, _ = keyless_instance
+
+    inst.write(structured_mutations=[
+        {"object_mutation": {"object_type": "person", "create": {
+            "key": {"name": "Alice Johnson"}, "values": {"role": "resident"},
+        }}},
+    ])
+    created = inst.write("A note: the Q3 migration is in progress.")
+    xuid = created.changes["created_keyless_objects"][0]["xuid"]
+
+    scoped = inst.write(
+        "That work is now complete.",
+        scope=WriteScope(objects=[ScopeObject(type="note", xuid=xuid)]),
+    )
+    assert "complete" in str(scoped.changes["updated"])
+    assert scoped.changes["created"]["objects"] == []
+
+    # Confinement still holds when the scope is named by xuid.
+    with pytest.raises(XmemoryAPIError):
+        inst.write(
+            "Alice Johnson is now a surgeon.",
+            scope=WriteScope(objects=[ScopeObject(type="note", xuid=xuid)]),
         )
