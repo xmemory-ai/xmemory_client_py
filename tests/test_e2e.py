@@ -15,7 +15,14 @@ import time
 
 import pytest
 
-from xmemory import XmemoryClient, XmemoryAPIError, SchemaType
+from xmemory import (
+    ExtractionLogic,
+    SchemaType,
+    ScopeObject,
+    WriteScope,
+    XmemoryAPIError,
+    XmemoryClient,
+)
 
 API_KEY = os.environ.get("XMEM_API_KEY")
 BASE_URL = os.environ.get("XMEM_API_URL", "https://api.stg.xmemory.ai")
@@ -199,3 +206,64 @@ def test_write_async_and_poll(instance):
         time.sleep(2)
         status = inst.write_status(async_result.write_id)
     assert status.write_status.value == "completed"
+
+
+def test_scoped_write_integrates_instead_of_duplicating(instance):
+    """A scope anchors a text write to a known record and confines what it may touch."""
+    inst, _ = instance
+
+    inst.write(structured_mutations=[
+        {"object_mutation": {"object_type": "person", "create": {
+            "key": {"name": "Alice Johnson"}, "values": {"role": "resident", "location": "Boston"},
+        }}},
+        {"object_mutation": {"object_type": "person", "create": {
+            "key": {"name": "Bob Lee"}, "values": {"role": "product manager"},
+        }}},
+    ])
+
+    scoped = inst.write(
+        "After her promotion she is a surgeon.",
+        scope=WriteScope(objects=[ScopeObject(type="person", key={"name": "Alice Johnson"})]),
+    )
+    # The point of the hint: Alice is updated in place rather than forked into a
+    # second, near-identical record.
+    assert "surgeon" in str(scoped.changes["updated"])
+    assert "Alice Johnson" not in str(scoped.changes["created"])
+
+
+def test_scoped_write_rejects_an_out_of_scope_target(instance):
+    """Confinement is checked against the plan, so it holds whatever the extractor produced."""
+    inst, _ = instance
+
+    inst.write(structured_mutations=[
+        {"object_mutation": {"object_type": "person", "create": {
+            "key": {"name": "Alice Johnson"}, "values": {"role": "resident"},
+        }}},
+        {"object_mutation": {"object_type": "person", "create": {
+            "key": {"name": "Bob Lee"}, "values": {"role": "product manager"},
+        }}},
+    ])
+
+    with pytest.raises(XmemoryAPIError):
+        inst.write(
+            "Bob Lee is now a director.",
+            scope=WriteScope(objects=[ScopeObject(type="person", key={"name": "Alice Johnson"})]),
+        )
+
+
+def test_scoped_write_with_deep_extraction_is_refused_by_the_server(instance):
+    """The client forwards the combination rather than pre-judging a server-side rule."""
+    inst, _ = instance
+
+    inst.write(structured_mutations=[
+        {"object_mutation": {"object_type": "person", "create": {
+            "key": {"name": "Alice Johnson"}, "values": {"role": "resident"},
+        }}},
+    ])
+
+    with pytest.raises(XmemoryAPIError):
+        inst.write(
+            "She now works in Boston.",
+            extraction_logic=ExtractionLogic.DEEP,
+            scope=WriteScope(objects=[ScopeObject(type="person", key={"name": "Alice Johnson"})]),
+        )

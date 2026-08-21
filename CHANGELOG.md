@@ -2,6 +2,48 @@
 
 All notable changes to `xmemory-ai` are documented here.
 
+## 0.16.0
+
+Adds scoped writes. A write was previously all-or-nothing about what it could
+touch: the extractor saw only the text, and whatever it produced was reconciled
+against the whole instance — so a note about someone the instance already knows
+could just as easily land as a second, near-identical record. A scope names the
+records the write is about, which both tells the extractor what to fold the new
+information into and confines the result to those records.
+
+### Added
+
+- `scope` on `write` and `write_async` (sync and async clients alike), taking a
+  `WriteScope` of concrete existing objects. Their current values are shown to
+  the extractor so the write updates them instead of creating duplicates, and
+  the write is then confined to the scope: it may only modify or delete the
+  scoped objects and create new objects and relations anchored to them. Anything
+  else fails the write. The confinement is checked against the resulting plan
+  rather than requested of the extractor, so it holds however the extraction
+  turned out.
+- `WriteScope`, re-exported from `xmemory`. It carries only `objects` — unlike
+  `ReadScope` there is no relation policy, because the relations among the
+  scoped objects always accompany the hint.
+- `ScopeObject.xuid`, an alternative to `key` for both read and write scopes.
+  A `ScopeObject` now takes exactly one of the two. This is not a convenience:
+  an object whose type has no user-defined primary key has no `key` to name it
+  by, so before this it could not be scoped at all.
+
+### Notes
+
+Scope applies to text writes only. Combining it with `structured_mutations`
+raises a `ValueError` here rather than travelling to the server, because those
+bypass extraction and leave a scope nothing to anchor to. Everything else stays
+a server-side decision and surfaces as an `XmemoryAPIError` — including the
+extraction logic a scope may be used with and the cap on how many objects one
+scope may name, both of which are deployment configuration this library should
+not be second-guessing or silently working around.
+
+One thing worth knowing before granting it: a scoped write additionally requires
+**read** permission on the instance. The scoped records' current field values
+ride the extraction prompt, so a scope is not merely a restriction — it is also
+a read of those rows, and a write-only caller is refused it.
+
 ## 0.15.0
 
 Surfaces the console link the API has always sent with every data operation and this

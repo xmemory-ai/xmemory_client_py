@@ -453,27 +453,36 @@ class _GenerateSchemaRequest(BaseModel):
 
 
 class ScopeObject(BaseModel):
-    """One concrete object a scoped read is allowed to touch.
+    """One concrete object a scoped read or a scoped write is allowed to touch.
 
     Identify the object by its ``type`` (PascalCase class name or snake_case
-    table name) plus its user-defined primary ``key`` (a mapping of primary-key
-    field name to value).
+    table name) plus exactly one of:
 
-    Serialized to the API's identity wire shape — ``{"type": ..., "key": {"key": {...}}}``.
+    - ``key`` — its user-defined primary key, a mapping of primary-key field name
+      to value, with one entry for every primary-key field; or
+    - ``xuid`` — the object's xuid. This is the only way to name an object whose
+      type has no user-defined primary key.
+
+    Serialized to the API's identity wire shape — ``{"type": ..., "key": {"key": {...}}}``
+    or ``{"type": ..., "key": {"xuid": ...}}``.
     """
 
     type: str
-    key: dict[str, str | int | float | bool]
+    key: dict[str, str | int | float | bool] | None = None
+    xuid: str | None = None
 
     @model_validator(mode="after")
-    def _non_empty_key(self) -> ScopeObject:
-        if not self.key:
+    def _exactly_one_identity(self) -> ScopeObject:
+        if (self.key is None) == (self.xuid is None):
+            raise ValueError("ScopeObject needs exactly one of 'key' or 'xuid'.")
+        if self.key is not None and not self.key:
             raise ValueError("ScopeObject 'key' must contain at least one primary-key field.")
         return self
 
     @model_serializer
     def _serialize(self) -> dict[str, Any]:
-        return {"type": self.type, "key": {"key": self.key}}
+        identity: dict[str, Any] = {"xuid": self.xuid} if self.xuid is not None else {"key": self.key}
+        return {"type": self.type, "key": identity}
 
 
 class ReadScope(BaseModel):
@@ -485,6 +494,19 @@ class ReadScope(BaseModel):
 
     objects: list[ScopeObject]
     relations_scope: Literal["no_relations", "all_relations"] = "no_relations"
+
+
+class WriteScope(BaseModel):
+    """A write's scope: the concrete existing objects the write is anchored to.
+
+    Their current values are shown to the extractor so the write updates them
+    instead of creating duplicates, and the write is then confined to them: it
+    may only modify or delete the scoped objects and create new objects (and
+    relations anchored to the scope). Unlike `ReadScope` there is no relation
+    policy — the relations among the scoped objects always accompany the hint.
+    """
+
+    objects: list[ScopeObject]
 
 
 class _ReadRequest(BaseModel):
@@ -633,14 +655,17 @@ class _WriteRequest(BaseModel):
     extraction_logic: ExtractionLogic = ExtractionLogic.FAST
     use_diff_engine: bool | None = None
     structured_mutations: list[dict[str, Any]] | None = None
+    scope: WriteScope | None = None
 
     @model_serializer(mode="wrap")
-    def _omit_unset_structured_mutations(self, handler: Any) -> dict[str, Any]:
-        # Omit the key entirely when unset: older servers reject unknown
+    def _omit_unset_optional_fields(self, handler: Any) -> dict[str, Any]:
+        # Omit these keys entirely when unset: older servers reject unknown
         # request fields, so plain text writes must stay byte-identical.
         data = handler(self)
         if self.structured_mutations is None:
             data.pop("structured_mutations", None)
+        if self.scope is None:
+            data.pop("scope", None)
         return data
 
 
