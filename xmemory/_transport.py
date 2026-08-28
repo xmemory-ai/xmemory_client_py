@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from xmemory._exceptions import XmemoryAPIError
 from xmemory._models import _RawApiResponse
+from xmemory._version import CLIENT_HEADER, client_identity
 
 _T = TypeVar("_T", bound=BaseModel)
 
@@ -82,18 +83,36 @@ def _error_from_response(resp: httpx.Response, path: str) -> XmemoryAPIError:
     )
 
 
+def attribution_headers() -> dict[str, str]:
+    """The identity header every request this library issues carries.
+
+    Unconditional, and per request rather than set on the client: nothing else on the wire claims this
+    field, so there is no caller intent to infer and no state to read back. A client you supplied gets
+    the same header as one this library built, and neither one's ``User-Agent`` is touched.
+
+    A fresh dict each call, because callers add ``Authorization`` to it.
+    """
+    return {CLIENT_HEADER: client_identity()}
+
+
 class SyncTransport:
     """Synchronous HTTP transport with ApiResponse wrapper handling."""
 
-    def __init__(self, client: httpx.Client, api_key: str | None, timeout: float) -> None:
+    def __init__(
+        self,
+        client: httpx.Client,
+        api_key: str | None,
+        timeout: float,
+    ) -> None:
         self._client = client
         self._api_key = api_key
         self.timeout = timeout
 
     def _headers(self) -> dict[str, str]:
+        headers = attribution_headers()
         if self._api_key:
-            return {"Authorization": "Bearer " + self._api_key}
-        return {}
+            headers["Authorization"] = "Bearer " + self._api_key
+        return headers
 
     def _parse(self, resp: httpx.Response, path: str) -> _RawApiResponse:
         payload = resp.json() if resp.text else {}
@@ -122,7 +141,12 @@ class SyncTransport:
         try:
             json_data = body.model_dump(by_alias=True) if body is not None else None
             resp = self._client.request(
-                method, path, json=json_data, params=params, headers=self._headers(), timeout=t,
+                method,
+                path,
+                json=json_data,
+                params=params,
+                headers=self._headers(),
+                timeout=t,
             )
             resp.raise_for_status()
             return self._parse(resp, path)
@@ -178,15 +202,21 @@ class SyncTransport:
 class AsyncTransport:
     """Asynchronous HTTP transport with ApiResponse wrapper handling."""
 
-    def __init__(self, client: httpx.AsyncClient, api_key: str | None, timeout: float) -> None:
+    def __init__(
+        self,
+        client: httpx.AsyncClient,
+        api_key: str | None,
+        timeout: float,
+    ) -> None:
         self._client = client
         self._api_key = api_key
         self.timeout = timeout
 
     def _headers(self) -> dict[str, str]:
+        headers = attribution_headers()
         if self._api_key:
-            return {"Authorization": "Bearer " + self._api_key}
-        return {}
+            headers["Authorization"] = "Bearer " + self._api_key
+        return headers
 
     def _parse(self, resp: httpx.Response, path: str) -> _RawApiResponse:
         payload = resp.json() if resp.text else {}
@@ -215,7 +245,12 @@ class AsyncTransport:
         try:
             json_data = body.model_dump(by_alias=True) if body is not None else None
             resp = await self._client.request(
-                method, path, json=json_data, params=params, headers=self._headers(), timeout=t,
+                method,
+                path,
+                json=json_data,
+                params=params,
+                headers=self._headers(),
+                timeout=t,
             )
             resp.raise_for_status()
             return self._parse(resp, path)

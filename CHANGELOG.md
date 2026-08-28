@@ -2,6 +2,40 @@
 
 All notable changes to `xmemory-ai` are documented here.
 
+## 0.17.0
+
+Sends an `X-Xmemory-Client` header on every request so the server can attribute traffic to this SDK.
+
+### Added
+
+- Both `XmemoryClient` and `AsyncXmemoryClient` now send
+  `X-Xmemory-Client: xmemory-python/0.17.0 (python <version>; <system>-<machine>)` on every request
+  they issue, including `check_health()`. It is unconditional and identical on a client you supplied,
+  and it is added per request rather than installed on the client, so a client you pass in is never
+  modified. The note carries the interpreter version, the OS name and the machine architecture —
+  never the hostname — and anything outside letters, digits, `.`, `_` and `-` is dropped from each
+  field, falling back to `unknown` when nothing usable is left.
+- `xmemory.__version__`, the version the header reports. `pyproject.toml` carries the same literal;
+  the two are twins that must be bumped together, and a test fails if they ever
+  disagree. It is deliberately not bound by
+  `from xmemory import *`, so it cannot overwrite a `__version__` of your own.
+- `xmemory.client_identity()`, which returns that same header value, and `xmemory.CLIENT_HEADER`,
+  the header name, so you can send it yourself on an HTTP client you build.
+
+Your `User-Agent` is not read and not written, on any client. A dedicated header rather than
+`User-Agent` because that field belongs to whoever built the request — you, httpx, or the platform
+hosting your code — and a library claiming it has to decide which of them to overrule.
+
+The trade is that an intermediary which strips unknown `X-` headers drops attribution where a
+`User-Agent` would have survived. Nothing else changes on the wire, and the request still carries
+httpx's own `User-Agent`, so a stripped header is counted as a generic Python HTTP caller rather than
+as no caller at all.
+
+### Notes
+
+`check_health()` is unauthenticated, on both paths — it requests `/healthz`, which takes
+no API key. Every other request carries the key, whichever client issues it.
+
 ## 0.16.0
 
 Adds scoped writes. A write was previously all-or-nothing about what it could

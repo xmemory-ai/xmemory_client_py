@@ -9,7 +9,7 @@ from xmemory._admin import AdminAPI, AsyncAdminAPI
 from xmemory._exceptions import XmemoryHealthCheckError
 from xmemory._instance import AsyncInstanceAPI, InstanceAPI
 from xmemory._keepalive import keepalive_socket_options
-from xmemory._transport import AsyncTransport, SyncTransport
+from xmemory._transport import AsyncTransport, SyncTransport, attribution_headers
 
 
 _ORANGE = "\033[38;5;208m"
@@ -100,7 +100,11 @@ class XmemoryClient:
             # detects half-broken connections in ~60 s instead of stalling
             # ``recv()`` for the full request timeout.
             transport = httpx.HTTPTransport(socket_options=keepalive_socket_options())
-            self._client = httpx.Client(base_url=base, timeout=timeout, transport=transport)
+            self._client = httpx.Client(
+                base_url=base,
+                timeout=timeout,
+                transport=transport,
+            )
             self._owns_client = True
 
         self._transport = SyncTransport(self._client, api_key, timeout)
@@ -118,7 +122,7 @@ class XmemoryClient:
     def check_health(self) -> None:
         """Verify the API server is reachable. Raises XmemoryHealthCheckError on failure."""
         try:
-            resp = self._client.get("/healthz", timeout=self._transport.timeout)
+            resp = self._client.get("/healthz", timeout=self._transport.timeout, headers=attribution_headers())
             resp.raise_for_status()
         except httpx.HTTPStatusError as e:
             raise XmemoryHealthCheckError(
@@ -176,7 +180,11 @@ class AsyncXmemoryClient:
         else:
             base = url or os.environ.get("XMEM_API_URL") or "https://api.xmemory.ai"
             transport = httpx.AsyncHTTPTransport(socket_options=keepalive_socket_options())
-            self._client = httpx.AsyncClient(base_url=base, timeout=timeout, transport=transport)
+            self._client = httpx.AsyncClient(
+                base_url=base,
+                timeout=timeout,
+                transport=transport,
+            )
             self._owns_client = True
 
         self._transport = AsyncTransport(self._client, api_key, timeout)
@@ -194,7 +202,7 @@ class AsyncXmemoryClient:
     async def check_health(self) -> None:
         """Verify the API server is reachable. Raises XmemoryHealthCheckError on failure."""
         try:
-            resp = await self._client.get("/healthz", timeout=self._transport.timeout)
+            resp = await self._client.get("/healthz", timeout=self._transport.timeout, headers=attribution_headers())
             resp.raise_for_status()
         except httpx.HTTPStatusError as e:
             raise XmemoryHealthCheckError(
