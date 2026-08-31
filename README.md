@@ -522,6 +522,14 @@ async with AsyncXmemoryClient(api_key="xmem_...") as client:
 You can pass your own `httpx.Client` (or `httpx.AsyncClient`). The client will not be closed when
 the Xmemory client is closed, giving you full control over its lifecycle.
 
+```python
+import httpx
+from xmemory import XmemoryClient
+
+http = httpx.Client(base_url="https://api.xmemory.ai", timeout=30)
+client = XmemoryClient(http_client=http, api_key="xmem_...")
+```
+
 The library never modifies a client you pass in — the object you built is the object you keep. It adds
 one header, `X-Xmemory-Client`, to the requests it issues through that client
 (`xmemory-python/<version> (python <version>; <system>-<machine>)`, which the API uses to tell its own
