@@ -1430,9 +1430,19 @@ def test_version_is_three_numeric_components() -> None:
     distinguishable from any other release of this client, permanently, in every event it sent.
 
     A prerelease or post suffix is fine and is not what this guards: the server matches the leading
-    three components and ignores the rest, so `0.17.0rc1` records as `0.17.0`.
+    three components and ignores the rest, so `0.17.0rc1` records as `0.17.0`. Hence a prefix match
+    rather than a full one.
+
+    The three-digit bound per component is the server's, not a guess: `_VERSION_PATTERN` there is
+    `([0-9]{1,3})` three times, so `1000.0.0` fails to parse and records as `unparsed` just as a
+    two-component version would. Widening it here to `\\d+` would let exactly that through.
+
+    The lookahead is what keeps the prefix match honest. Without it `0.17.1000` passes, because
+    `\\d{1,3}` happily matches the first three digits of a four-digit component -- and the server
+    matches the same three, so the release would record as a `0.17.100` that was never published.
+    A non-digit after the triplet is what separates a suffix from an overflowing component.
     """
-    assert re.fullmatch(r"\d{1,3}\.\d{1,3}\.\d{1,3}", __version__)
+    assert re.match(r"\d{1,3}\.\d{1,3}\.\d{1,3}(?!\d)", __version__)
 
 
 def test_sync_admin_call_sends_the_client_header(httpx_mock, client):
@@ -1525,6 +1535,34 @@ def test_caller_supplied_client_is_attributed_without_being_written_to(httpx_moc
     # only one place.
     assert healthz.calls.last.request.headers[CLIENT_HEADER] == client_identity()
     assert healthz.calls.last.request.headers.get("authorization") is None
+
+
+def test_a_client_level_identity_header_is_replaced_per_request(httpx_mock, base_url):
+    """The README promises a caller's own `X-Xmemory-Client` is replaced on every call, because a
+    per-request header wins over a client-level one in httpx.
+
+    Every other test here supplies a client that sets no identity header, so all of them would still
+    pass if `headers=` were dropped from a request path and the caller's stale value rode along.
+    """
+    route = httpx_mock.get("/clusters").mock(return_value=httpx.Response(200, json=_api_ok([])))
+
+    with httpx.Client(base_url=base_url, headers={CLIENT_HEADER: "something-else/9.9.9"}) as http:
+        with XmemoryClient(http_client=http, api_key="test-api-key") as c:
+            c.admin.list_clusters()
+        assert http.headers[CLIENT_HEADER] == "something-else/9.9.9", "the caller's client was written to"
+
+    assert route.calls.last.request.headers[CLIENT_HEADER] == client_identity()
+
+
+async def test_a_client_level_identity_header_is_replaced_per_request_async(httpx_mock, base_url):
+    route = httpx_mock.get("/clusters").mock(return_value=httpx.Response(200, json=_api_ok([])))
+
+    async with httpx.AsyncClient(base_url=base_url, headers={CLIENT_HEADER: "something-else/9.9.9"}) as http:
+        async with AsyncXmemoryClient(http_client=http, api_key="test-api-key") as c:
+            await c.admin.list_clusters()
+        assert http.headers[CLIENT_HEADER] == "something-else/9.9.9", "the caller's client was written to"
+
+    assert route.calls.last.request.headers[CLIENT_HEADER] == client_identity()
 
 
 async def test_caller_supplied_async_client_is_attributed_without_being_written_to(httpx_mock, base_url):
