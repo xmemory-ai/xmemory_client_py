@@ -2,6 +2,11 @@ from xmemory._exceptions import (
     XmemoryAPIError,
     XmemoryHealthCheckError,
 )
+
+# Re-exported deliberately, but kept out of ``__all__`` so ``import *`` cannot overwrite a
+# consumer's own ``__version__``; ``xmemory.__version__`` still reads it.
+from xmemory._version import __version__ as __version__
+from xmemory._version import CLIENT_HEADER, client_identity
 from xmemory._models import (
     UNSET,
     AgentSurface,
@@ -92,6 +97,8 @@ from xmemory._instance import (
 )
 
 __all__ = [
+    "CLIENT_HEADER",
+    "client_identity",
     "XmemoryClient",
     "AsyncXmemoryClient",
     "AdminAPI",

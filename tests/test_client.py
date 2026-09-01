@@ -2,14 +2,17 @@
 from __future__ import annotations
 
 import json
+import re
 import uuid
 
 import httpx
 import pytest
 import respx
 
+from xmemory import _version
 from xmemory._admin import _as_str_list
 from xmemory import (
+    __version__,
     AgentSetupResult,
     AgentSetupStep,
     AgentSetupSurface,
@@ -34,6 +37,8 @@ from xmemory import (
     WriteScope,
     XmemoryAPIError,
     XmemoryClient,
+    CLIENT_HEADER,
+    client_identity,
 )
 
 CLUSTER_ID = str(uuid.uuid4())
@@ -101,6 +106,7 @@ def test_api_key_passed_in_auth_header(httpx_mock, client):
 
     assert route.called
     assert route.calls.last.request.headers["authorization"] == "Bearer test-api-key"
+    assert route.calls.last.request.headers[CLIENT_HEADER] == client_identity()
 
 
 # ---------------------------------------------------------------------------
@@ -1396,3 +1402,486 @@ def test_scope_and_structured_mutations_are_mutually_exclusive(client):
             ],
             scope=WriteScope(objects=[ScopeObject(type="Person", key={"name": "Alice"})]),
         )
+
+
+# ---------------------------------------------------------------------------
+# Client-identity header
+# ---------------------------------------------------------------------------
+
+# The server reads the client name from the first whitespace-delimited piece of this header, taking
+# the part before "/" and matching it against a fixed list of known clients; it reads the version as
+# exactly three numeric components. A header that drifts from this shape is not rejected — it is
+# counted against an unknown-client bucket instead, so nothing here or on the server would fail.
+_CLIENT_IDENTITY_RE = re.compile(
+    r"xmemory-python/[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3} \(python [A-Za-z0-9._-]+; [A-Za-z0-9._-]+\)\Z"
+)
+
+
+def test_client_identity_has_the_shape_the_server_reads() -> None:
+    assert _CLIENT_IDENTITY_RE.match(client_identity())
+
+
+def test_version_is_three_numeric_components() -> None:
+    """Guards the version shape the header has to carry.
+
+    A two-component version is a perfectly ordinary thing to publish and every other test here would
+    still pass with it — but the server reads `major.minor.patch` from the start of the token, so it
+    records the version as `unparsed` instead. The name still resolves; the release simply stops being
+    distinguishable from any other release of this client, permanently, in every event it sent.
+
+    A prerelease or post suffix is fine and is not what this guards: the server matches the leading
+    three components and ignores the rest, so `0.17.0rc1` records as `0.17.0`. Hence a prefix match
+    rather than a full one.
+
+    The three-digit bound per component is the server's, not a guess: `_VERSION_PATTERN` there is
+    `([0-9]{1,3})` three times, so `1000.0.0` fails to parse and records as `unparsed` just as a
+    two-component version would. Widening it here to `\\d+` would let exactly that through.
+
+    The lookahead is what keeps the prefix match honest. Without it `0.17.1000` passes, because
+    `\\d{1,3}` happily matches the first three digits of a four-digit component -- and the server
+    matches the same three, so the release would record as a `0.17.100` that was never published.
+    A non-digit after the triplet is what separates a suffix from an overflowing component.
+    """
+    assert re.match(r"\d{1,3}\.\d{1,3}\.\d{1,3}(?!\d)", __version__)
+
+
+def test_sync_admin_call_sends_the_client_header(httpx_mock, client):
+    route = httpx_mock.get("/clusters").mock(return_value=httpx.Response(200, json=_api_ok([])))
+
+    client.admin.list_clusters()
+
+    assert route.called
+    assert route.calls.last.request.headers[CLIENT_HEADER] == client_identity()
+
+
+def test_check_health_sends_the_client_header(httpx_mock, client):
+    route = httpx_mock.get("/healthz").mock(return_value=httpx.Response(200))
+
+    client.check_health()
+
+    assert route.called
+    assert route.calls.last.request.headers[CLIENT_HEADER] == client_identity()
+
+
+async def test_async_admin_call_sends_the_client_header(httpx_mock, async_client):
+    route = httpx_mock.get("/clusters").mock(return_value=httpx.Response(200, json=_api_ok([])))
+
+    await async_client.admin.list_clusters()
+
+    assert route.called
+    assert route.calls.last.request.headers["authorization"] == "Bearer test-api-key"
+    assert route.calls.last.request.headers[CLIENT_HEADER] == client_identity()
+
+
+async def test_async_check_health_sends_the_client_header(httpx_mock, async_client):
+    route = httpx_mock.get("/healthz").mock(return_value=httpx.Response(200))
+
+    await async_client.check_health()
+
+    assert route.called
+    assert route.calls.last.request.headers[CLIENT_HEADER] == client_identity()
+
+
+# ---------------------------------------------------------------------------
+# A caller-supplied HTTP client is left alone
+# ---------------------------------------------------------------------------
+
+
+def test_caller_supplied_client_keeps_its_own_headers(httpx_mock, base_url):
+    """A client the caller built is the caller's to configure, and may well be shared with traffic
+    that has nothing to do with this library — so its headers are read, never written."""
+    route = httpx_mock.get("/clusters").mock(return_value=httpx.Response(200, json=_api_ok([])))
+
+    with httpx.Client(base_url=base_url, headers={"User-Agent": "caller/1.0"}) as http:
+        before = dict(http.headers)
+        with XmemoryClient(http_client=http, api_key="test-api-key") as c:
+            c.admin.list_clusters()
+        assert dict(http.headers) == before
+
+    assert route.calls.last.request.headers["user-agent"] == "caller/1.0"
+
+
+async def test_caller_supplied_async_client_keeps_its_own_headers(httpx_mock, base_url):
+    route = httpx_mock.get("/clusters").mock(return_value=httpx.Response(200, json=_api_ok([])))
+
+    async with httpx.AsyncClient(base_url=base_url, headers={"User-Agent": "caller/1.0"}) as http:
+        before = dict(http.headers)
+        async with AsyncXmemoryClient(http_client=http, api_key="test-api-key") as c:
+            await c.admin.list_clusters()
+        assert dict(http.headers) == before
+
+    assert route.calls.last.request.headers["user-agent"] == "caller/1.0"
+
+
+def test_caller_supplied_client_is_attributed_without_being_written_to(httpx_mock, base_url):
+    """A passed-in client is attributed like any other, and is not modified to do it.
+
+    The header is added per request rather than installed on the client, so a client shared with
+    traffic that has nothing to do with this library carries nothing of ours between calls.
+    """
+    clusters = httpx_mock.get("/clusters").mock(return_value=httpx.Response(200, json=_api_ok([])))
+    healthz = httpx_mock.get("/healthz").mock(return_value=httpx.Response(200))
+
+    with httpx.Client(base_url=base_url) as http:
+        before = dict(http.headers)
+        with XmemoryClient(http_client=http, api_key="test-api-key") as c:
+            c.admin.list_clusters()
+            c.check_health()
+        assert dict(http.headers) == before, "the caller's client was written to"
+
+    assert clusters.calls.last.request.headers[CLIENT_HEADER] == client_identity()
+    assert clusters.calls.last.request.headers["authorization"] == "Bearer test-api-key"
+    # check_health bypasses the transport, so it is the path that drifts if the header is added in
+    # only one place.
+    assert healthz.calls.last.request.headers[CLIENT_HEADER] == client_identity()
+    assert healthz.calls.last.request.headers.get("authorization") is None
+
+
+def test_a_client_level_identity_header_is_replaced_per_request(httpx_mock, base_url):
+    """The README promises a caller's own `X-Xmemory-Client` is replaced on every call, because a
+    per-request header wins over a client-level one in httpx.
+
+    Every other test here supplies a client that sets no identity header, so all of them would still
+    pass if `headers=` were dropped from a request path and the caller's stale value rode along.
+    """
+    route = httpx_mock.get("/clusters").mock(return_value=httpx.Response(200, json=_api_ok([])))
+
+    with httpx.Client(base_url=base_url, headers={CLIENT_HEADER: "something-else/9.9.9"}) as http:
+        with XmemoryClient(http_client=http, api_key="test-api-key") as c:
+            c.admin.list_clusters()
+        assert http.headers[CLIENT_HEADER] == "something-else/9.9.9", "the caller's client was written to"
+
+    assert route.calls.last.request.headers[CLIENT_HEADER] == client_identity()
+
+
+async def test_a_client_level_identity_header_is_replaced_per_request_async(httpx_mock, base_url):
+    route = httpx_mock.get("/clusters").mock(return_value=httpx.Response(200, json=_api_ok([])))
+
+    async with httpx.AsyncClient(base_url=base_url, headers={CLIENT_HEADER: "something-else/9.9.9"}) as http:
+        async with AsyncXmemoryClient(http_client=http, api_key="test-api-key") as c:
+            await c.admin.list_clusters()
+        assert http.headers[CLIENT_HEADER] == "something-else/9.9.9", "the caller's client was written to"
+
+    assert route.calls.last.request.headers[CLIENT_HEADER] == client_identity()
+
+
+async def test_caller_supplied_async_client_is_attributed_without_being_written_to(httpx_mock, base_url):
+    clusters = httpx_mock.get("/clusters").mock(return_value=httpx.Response(200, json=_api_ok([])))
+    healthz = httpx_mock.get("/healthz").mock(return_value=httpx.Response(200))
+
+    async with httpx.AsyncClient(base_url=base_url) as http:
+        before = dict(http.headers)
+        async with AsyncXmemoryClient(http_client=http, api_key="test-api-key") as c:
+            await c.admin.list_clusters()
+            await c.check_health()
+        assert dict(http.headers) == before, "the caller's client was written to"
+
+    assert clusters.calls.last.request.headers[CLIENT_HEADER] == client_identity()
+    assert clusters.calls.last.request.headers["authorization"] == "Bearer test-api-key"
+    assert healthz.calls.last.request.headers[CLIENT_HEADER] == client_identity()
+    assert healthz.calls.last.request.headers.get("authorization") is None
+
+
+def test_client_identity_survives_a_platform_that_raises(monkeypatch):
+    """Reading the platform note must never be the reason a client fails to construct.
+
+    The fallback is the only thing standing between a hostile or broken `platform` module and a
+    traceback out of the constructor, and nothing else in this file exercises it.
+    """
+
+    def _boom() -> str:
+        raise RuntimeError("platform is unavailable")
+
+    monkeypatch.setattr(_version.platform, "system", _boom)
+    assert client_identity() == f"xmemory-python/{__version__} (unknown)"
+
+
+def test_check_health_sends_no_api_key(httpx_mock, client):
+    """`/healthz` takes no credential, so the key must not travel there.
+
+    The health check builds its headers from the module-level `attribution_headers()` alone.
+    `_headers()` on the transport also carries `Authorization`, so reaching for that one instead --
+    one word of difference at the call site -- sends the key to an unauthenticated endpoint, and
+    every other test in this file stays green while it does.
+    """
+    healthz = httpx_mock.get("/healthz").mock(return_value=httpx.Response(200))
+
+    client.check_health()
+
+    assert healthz.calls.last.request.headers.get("authorization") is None
+
+
+async def test_async_check_health_sends_no_api_key(httpx_mock, async_client):
+    """Same for the async path, which duplicates the sync one and can drift from it."""
+    healthz = httpx_mock.get("/healthz").mock(return_value=httpx.Response(200))
+
+    await async_client.check_health()
+
+    assert healthz.calls.last.request.headers.get("authorization") is None
+
+
+@pytest.mark.parametrize(
+    "caller_headers,expected_user_agent",
+    [
+        ({"User-Agent": "caller/1.0"}, "caller/1.0"),
+        ({"User-Agent": ""}, ""),
+        ({"User-Agent": "xmemory-python/9.9.9 (someone-else)"}, "xmemory-python/9.9.9 (someone-else)"),
+        ({}, f"python-httpx/{httpx.__version__}"),
+    ],
+    ids=["own-ua", "empty-ua", "looks-like-ours", "httpx-default"],
+)
+def test_a_caller_user_agent_is_never_read_or_written(httpx_mock, base_url, caller_headers, expected_user_agent):
+    """Whatever the caller's ``User-Agent`` says, it goes out unchanged and the identity header is added.
+
+    This is the property the dedicated header exists to make true. The four cases are the ones a
+    ``User-Agent``-based scheme has to tell apart and cannot: a header the caller chose, an empty one,
+    one that merely looks like this library's, and httpx's own default standing in for "chose nothing".
+    Here they are one case, because nothing reads the field to decide.
+    """
+    clusters = httpx_mock.get("/clusters").mock(return_value=httpx.Response(200, json=_api_ok([])))
+    healthz = httpx_mock.get("/healthz").mock(return_value=httpx.Response(200))
+
+    with httpx.Client(base_url=base_url, headers=caller_headers) as http:
+        with XmemoryClient(http_client=http, api_key="test-api-key") as c:
+            c.admin.list_clusters()
+            c.check_health()
+
+    assert clusters.calls.last.request.headers["user-agent"] == expected_user_agent
+    assert clusters.calls.last.request.headers[CLIENT_HEADER] == client_identity()
+    # check_health assembles its headers separately, so it is the path that drifts if the identity
+    # header is added in only one place.
+    assert healthz.calls.last.request.headers["user-agent"] == expected_user_agent
+    assert healthz.calls.last.request.headers[CLIENT_HEADER] == client_identity()
+
+
+def test_a_deleted_user_agent_does_not_take_attribution_with_it(httpx_mock, base_url):
+    """httpx does not restore its default once a header is deleted, so the request goes out with no
+    ``User-Agent`` at all -- and the identity header is still there, because it never depended on it.
+    """
+    clusters = httpx_mock.get("/clusters").mock(return_value=httpx.Response(200, json=_api_ok([])))
+
+    with httpx.Client(base_url=base_url) as http:
+        with XmemoryClient(http_client=http, api_key="test-api-key") as c:
+            del http.headers["User-Agent"]
+            c.admin.list_clusters()
+
+    assert clusters.calls.last.request.headers.get("user-agent") is None
+    assert clusters.calls.last.request.headers[CLIENT_HEADER] == client_identity()
+
+
+async def test_an_async_caller_user_agent_is_never_read_or_written(httpx_mock, base_url):
+    """A `User-Agent` set after construction survives on both the ordinary path and the health check.
+
+    `AsyncTransport._headers()` and the async `check_health()` are separate code from their sync
+    counterparts, so covering the sync side says nothing about this one.
+    """
+    clusters = httpx_mock.get("/clusters").mock(return_value=httpx.Response(200, json=_api_ok([])))
+    healthz = httpx_mock.get("/healthz").mock(return_value=httpx.Response(200))
+
+    async with httpx.AsyncClient(base_url=base_url) as http:
+        async with AsyncXmemoryClient(http_client=http, api_key="test-api-key") as c:
+            http.headers["User-Agent"] = "caller/2.0"
+            await c.admin.list_clusters()
+            await c.check_health()
+
+    assert clusters.calls.last.request.headers["user-agent"] == "caller/2.0"
+    assert clusters.calls.last.request.headers[CLIENT_HEADER] == client_identity()
+    assert healthz.calls.last.request.headers["user-agent"] == "caller/2.0"
+    assert healthz.calls.last.request.headers[CLIENT_HEADER] == client_identity()
+
+
+async def test_an_async_deleted_user_agent_does_not_take_attribution_with_it(httpx_mock, base_url):
+    """Deleting the header is the one case that empties rather than replaces it.
+
+    The sync side covers this; the async transport resolves its headers separately, so a change that
+    reintroduced a `User-Agent` read would show up on one path and not the other.
+    """
+    clusters = httpx_mock.get("/clusters").mock(return_value=httpx.Response(200, json=_api_ok([])))
+
+    async with httpx.AsyncClient(base_url=base_url) as http:
+        async with AsyncXmemoryClient(http_client=http, api_key="test-api-key") as c:
+            del http.headers["User-Agent"]
+            await c.admin.list_clusters()
+
+    assert clusters.calls.last.request.headers.get("user-agent") is None
+    assert clusters.calls.last.request.headers[CLIENT_HEADER] == client_identity()
+
+
+# ---------------------------------------------------------------------------
+# The header name is what the API reads, asserted as a literal
+# ---------------------------------------------------------------------------
+
+
+def test_the_client_header_name_is_pinned_to_its_literal() -> None:
+    """Asserted as a literal, not through the constant every other test here reads.
+
+    The server names this header in its own source and this package cannot import it, so the two agree
+    only by both being right. Every other assertion in this file looks the header up by `CLIENT_HEADER`,
+    which means a rename would move the assertions with it and leave the suite green while this SDK's
+    calls were filed as generic httpx traffic -- permanently, since an analytics value cannot be
+    reclassified once emitted.
+    """
+    assert CLIENT_HEADER == "X-Xmemory-Client"
+
+
+# ---------------------------------------------------------------------------
+# Version single-source-of-truth
+# ---------------------------------------------------------------------------
+
+
+def test_version_matches_pyproject() -> None:
+    """`xmemory.__version__` and `pyproject.toml`'s `[project].version` must never drift apart —
+    nothing derives one from the other at build time."""
+    try:
+        import tomllib  # type: ignore[import-not-found]
+    except ImportError:  # Python 3.10
+        import tomli as tomllib  # type: ignore[import-not-found, no-redef]
+
+    import pathlib
+
+    pyproject_path = pathlib.Path(__file__).resolve().parent.parent / "pyproject.toml"
+    with pyproject_path.open("rb") as f:
+        data = tomllib.load(f)
+
+    assert data["project"]["version"] == __version__
+
+
+# ---------------------------------------------------------------------------
+# The platform note is sanitized before it reaches the header
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("system_name", "machine_name"),
+    [
+        pytest.param("Dárwin", "arm64", id="non-ascii-system"),
+        pytest.param("Linux", "日本語", id="non-ascii-machine"),
+        pytest.param("Lin\nux", "x86_64", id="newline-in-system"),
+        pytest.param("Linux", "x86\r64", id="carriage-return-in-machine"),
+        pytest.param("日本語", "日本語", id="nothing-usable-survives"),
+    ],
+)
+def test_hostile_platform_values_still_yield_a_sendable_header(
+    httpx_mock, monkeypatch, base_url, system_name, machine_name
+) -> None:
+    """Neither reported value is guaranteed to be clean — on Windows the machine string is read
+    out of an environment variable. Neither kind of dirty byte can travel in a header, and they
+    fail at different moments: a control character is accepted into the header object and then
+    rejected at send, so every request fails, while a non-ASCII byte raises inside ``httpx.Headers``
+    and the header never assembles. Sanitizing is what keeps both off the header.
+
+    Asserted on a request that is actually issued, not on the header object: the control-character
+    case is accepted into the object and only rejected at send, so a check that stops at the object
+    would pass on exactly the input it exists to catch.
+    """
+    import platform
+
+    monkeypatch.setattr(platform, "system", lambda: system_name)
+    monkeypatch.setattr(platform, "machine", lambda: machine_name)
+
+    assert _CLIENT_IDENTITY_RE.match(client_identity())
+
+    route = httpx_mock.get("/clusters").mock(return_value=httpx.Response(200, json=_api_ok([])))
+    with XmemoryClient(url=base_url, api_key="test-api-key") as c:
+        c.admin.list_clusters()
+
+    assert route.calls.last.request.headers[CLIENT_HEADER] == client_identity()
+
+
+async def test_hostile_platform_values_still_yield_a_sendable_async_header(httpx_mock, monkeypatch, base_url) -> None:
+    import platform
+
+    monkeypatch.setattr(platform, "system", lambda: "Lin\nux")
+    monkeypatch.setattr(platform, "machine", lambda: "日本語")
+
+    route = httpx_mock.get("/clusters").mock(return_value=httpx.Response(200, json=_api_ok([])))
+    async with AsyncXmemoryClient(url=base_url, api_key="test-api-key") as c:
+        await c.admin.list_clusters()
+
+    assert _CLIENT_IDENTITY_RE.match(route.calls.last.request.headers[CLIENT_HEADER])
+    assert route.calls.last.request.headers[CLIENT_HEADER] == client_identity()
+
+
+def test_platform_note_never_carries_the_hostname(monkeypatch) -> None:
+    """The note says which OS and architecture, and nothing that identifies the machine.
+
+    The hostname is patched to something the note could not otherwise contain, so this holds on any
+    machine — a real hostname can be a substring of the OS or architecture, or be long enough to be
+    truncated away, either of which would make the check lie.
+    """
+    import platform
+
+    monkeypatch.setattr(platform, "node", lambda: "hostname-that-must-not-appear")
+    monkeypatch.setattr(platform, "system", lambda: "Linux")
+    monkeypatch.setattr(platform, "machine", lambda: "x86_64")
+    monkeypatch.setattr(platform, "python_version", lambda: "3.12.4")
+
+    assert "hostname-that-must-not-appear" not in client_identity()
+    assert client_identity() == f"xmemory-python/{__version__} (python 3.12.4; Linux-x86_64)"
+
+
+def test_platform_note_is_bounded(monkeypatch) -> None:
+    """On Windows the architecture is read out of an environment variable, so its length is the
+    caller's to choose, not the operating system's."""
+    import platform
+
+    monkeypatch.setattr(platform, "system", lambda: "Linux")
+    monkeypatch.setattr(platform, "machine", lambda: "x" * 5000)
+
+    assert len(client_identity()) < 200
+    assert _CLIENT_IDENTITY_RE.match(client_identity())
+
+
+@pytest.mark.parametrize("sep", ["-", ".", "_"], ids=["hyphen", "dot", "underscore"])
+def test_platform_note_never_starts_or_ends_with_a_separator(monkeypatch, sep: str) -> None:
+    """Trimming has to happen after the length is capped: a value cut at the wrong place would
+    otherwise leave a dangling separator that trimming had already removed.
+
+    Every separator the allowlist admits, not only the one the note joins on -- a 64-character cut
+    lands wherever the host's string puts it, and `3.12.` or `x86_` reach the header just as easily
+    as a trailing hyphen does.
+    """
+    import platform
+
+    monkeypatch.setattr(platform, "system", lambda: "A" * 63 + sep + "B")
+    monkeypatch.setattr(platform, "machine", lambda: "x")
+
+    note = client_identity().split("(", 1)[1].rstrip(")")
+    for candidate in note.split("; "):
+        assert not candidate.startswith(sep), f"{candidate!r} starts with {sep!r}"
+        assert not candidate.endswith(sep), f"{candidate!r} ends with {sep!r}"
+
+
+def test_platform_note_reports_the_running_interpreter_version(monkeypatch) -> None:
+    """The version is read from the interpreter rather than restated, so it cannot go stale.
+
+    This is the field the note exists for: the OS and architecture say nothing anyone acts on, while
+    the interpreter version is what decides whether a Python release still has users.
+    """
+    import platform
+
+    monkeypatch.setattr(platform, "python_version", lambda: "3.9.18")
+
+    assert "(python 3.9.18; " in client_identity()
+
+
+def test_a_hostile_interpreter_version_cannot_break_the_note(monkeypatch) -> None:
+    """`python_version()` is read out of the build, so a patched or vendored interpreter can report
+    anything. A field that kept a semicolon or a parenthesis would forge this note's own separators."""
+    import platform
+
+    for reported in ("3.12.4; evil) (", "\n3.12", "日本語", "", "9" * 300):
+        monkeypatch.setattr(platform, "python_version", lambda v=reported: v)
+        note = client_identity().split("(", 1)[1].rstrip(")")
+        assert _CLIENT_IDENTITY_RE.match(client_identity()), f"{reported!r} broke the shape"
+        assert note.count(";") == 1, f"{reported!r} forged a separator"
+
+
+def test_star_import_does_not_bind_version(monkeypatch) -> None:
+    """`__version__` is reachable as `xmemory.__version__`, but a star-import must not overwrite a
+    consumer's own."""
+    namespace: dict[str, object] = {"__version__": "consumer-owned"}
+
+    exec("from xmemory import *", namespace)  # noqa: S102
+
+    assert namespace["__version__"] == "consumer-owned"

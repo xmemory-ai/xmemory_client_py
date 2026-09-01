@@ -530,6 +530,36 @@ http = httpx.Client(base_url="https://api.xmemory.ai", timeout=30)
 client = XmemoryClient(http_client=http, api_key="xmem_...")
 ```
 
+The library never modifies a client you pass in — the object you built is the object you keep. It adds
+one header, `X-Xmemory-Client`, to the requests it issues through that client
+(`xmemory-python/<version> (python <version>; <system>-<machine>)`, which the API uses to tell its own
+clients apart). The header is added per request rather than installed on your client, so a client you
+share with other traffic carries nothing of ours between calls.
+
+Your `User-Agent` is never read and never written. Set it, clear it, leave it at httpx's default —
+attribution is unaffected either way, because it does not live in that field. That is the reason for a
+dedicated header: `User-Agent` belongs to whoever built the request, and a library claiming it has to
+decide whose choice to overrule.
+
+Setting the header on a client you pass in is not how you get attributed, and not necessary: the
+library adds its own on every request it issues, and a per-request header wins over a client-level one
+in httpx, so yours would be replaced on each call. `xmemory.client_identity()` and
+`xmemory.CLIENT_HEADER` are exported for requests you send to the API **outside** this library:
+
+```python
+import httpx
+from xmemory import CLIENT_HEADER, client_identity
+
+# A call this library does not make for you -- an endpoint it does not wrap, say.
+httpx.get(
+    "https://api.xmemory.ai/some/endpoint",
+    headers={CLIENT_HEADER: client_identity(), "Authorization": "Bearer xmem_..."},
+)
+```
+
+The API key travels on every API request, whichever client issues it. `check_health()` is the one
+exception, on both paths: it requests `/healthz`, which takes no key.
+
 ## Health check
 
 ```python

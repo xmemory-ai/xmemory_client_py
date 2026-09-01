@@ -447,7 +447,7 @@ wheels = [
 
 [[package]]
 name = "xmemory-ai"
-version = "0.16.0"
+version = "0.17.0"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },
@@ -461,6 +461,7 @@ dev = [
     { name = "pytest-asyncio" },
     { name = "respx" },
     { name = "ruff" },
+    { name = "tomli", marker = "python_full_version < '3.11'" },
 ]
 
 [package.metadata]
@@ -476,4 +477,5 @@ dev = [
     { name = "pytest-asyncio", specifier = ">=0.24" },
     { name = "respx", specifier = ">=0.22" },
     { name = "ruff" },
+    { name = "tomli", marker = "python_full_version < '3.11'", specifier = ">=2" },
 ]
