@@ -28,6 +28,35 @@ class ReadMode(str, Enum):
     XRESPONSE = "xresponse"
 
 
+class RelatedTypesMode(str, Enum):
+    """What a read says about the schema around its answer.
+
+    ``TYPES`` adds :attr:`ReadResult.related_types` to the result; ``NONE`` (the
+    server default) leaves it out. Asking for it needs the ``instance.get_own``
+    permission on the API key, the same one the schema endpoints need, on top of
+    ``data.read``: a key without it gets a 403 whose message names the permission,
+    and the plain read is unaffected.
+    """
+
+    NONE = "none"
+    TYPES = "types"
+
+
+class RelationCardinality(str, Enum):
+    """Cardinality of a relation seen from the touched type's role, from the relation's unique keys.
+
+    ``ONE_TO_MANY`` means one touched record links to many neighbours and each
+    neighbour to at most one touched record; ``MANY_TO_ONE`` is the reverse;
+    ``UNCONSTRAINED`` means the schema declares no uniqueness rule for the relation.
+    """
+
+    ONE_TO_ONE = "one_to_one"
+    ONE_TO_MANY = "one_to_many"
+    MANY_TO_ONE = "many_to_one"
+    MANY_TO_MANY = "many_to_many"
+    UNCONSTRAINED = "unconstrained"
+
+
 class WriteQueueStatus(str, Enum):
     QUEUED = "queued"
     PROCESSING = "processing"
@@ -168,6 +197,76 @@ class TaggedReaderResult(BaseModel):
 # this must handle its absence rather than assume a link.
 
 
+class RelatedTypesLink(BaseModel):
+    """One relation edge from a touched type to a neighbouring type; :attr:`RelatedTypes.types` describes both ends."""
+
+    # The neighbouring object type, described once under ``RelatedTypes.types``.
+    object_type: str
+    # The relation that links the two, described once under ``RelatedTypes.relations``.
+    relation: str
+    # The roles the touched type and the neighbouring type play in this edge.
+    touched_role: str
+    related_role: str
+    # Left-to-right so a value this release knows arrives as the enum member while one a newer
+    # server adds arrives as a plain string rather than rejecting the whole payload.
+    cardinality: Union[RelationCardinality, str] = Field(union_mode="left_to_right")
+
+
+class RelatedTypesTouched(BaseModel):
+    """One object type the read touched, with what it withheld and what it is linked to."""
+
+    # Object type name as declared in the schema, described under ``RelatedTypes.types``.
+    object_type: str
+    # Fields of this type the read did not project. Ask for one by name to see it; an expression
+    # the reader could not attribute to a field counts here rather than as returned.
+    fields_not_returned: list[str] = []
+    # Relation edges to neighbouring types, sorted by relation then type. A self-relation lists
+    # one edge per role.
+    related: list[RelatedTypesLink] = []
+    # Edges dropped from ``related`` to stay within the server's payload budget.
+    omitted_related: int = 0
+
+
+class RelatedTypesObjectType(BaseModel):
+    """Catalog entry for an object type named anywhere in :attr:`RelatedTypes.touched`."""
+
+    description: str | None = None
+    # Declared primary-key fields, in declared order.
+    primary_key: list[str] = []
+    # Every field of the object type, by name.
+    fields: list[str] = []
+
+
+class RelatedTypesRelation(BaseModel):
+    """Catalog entry for a relation named by any edge."""
+
+    description: str | None = None
+
+
+class RelatedTypes(BaseModel):
+    """What else the memory could answer about, for a read that asked with ``include_related_types``.
+
+    The object types the read touched, each with the fields it did not return and
+    its relation edges, plus a catalog that describes every named type and relation
+    exactly once. It is derived from the instance schema and the statements the
+    read executed -- no extra rows are read and no model is called -- so an agent
+    can phrase a deliberate follow-up read instead of guessing. The server caps the
+    payload; whatever it dropped is counted on the entry it was dropped from, and
+    ``truncated`` says that something was.
+    """
+
+    # Object types the read touched, sorted by name. Empty when the read executed nothing.
+    touched: list[RelatedTypesTouched] = []
+    # Every object type named in ``touched``, touched or neighbouring, once.
+    types: dict[str, RelatedTypesObjectType] = {}
+    # Every relation named by an edge, once.
+    relations: dict[str, RelatedTypesRelation] = {}
+    # Touched types dropped to stay within the budget.
+    omitted_touched: int = 0
+    # ``True`` when any type or edge was dropped for the budget.
+    truncated: bool = False
+
+
 class ReadResult(BaseModel):
     """What a read answered.
 
@@ -201,6 +300,12 @@ class ReadResult(BaseModel):
     # one); ``reader_result`` above stays the combined back-compat value. Empty
     # from a server without question decomposition, or when it is disabled.
     reader_results: list[TaggedReaderResult] = []
+    # The schema around the answer, when the read asked for it with
+    # ``include_related_types=RelatedTypesMode.TYPES``; ``None`` otherwise. The wire omits
+    # the field unless it was requested, and a server that predates the option never sends
+    # it, so ``None`` means "not asked for" -- a requested read that executed nothing arrives
+    # with ``touched == []`` instead.
+    related_types: RelatedTypes | None = None
 
 
 class WriteResult(BaseModel):
@@ -536,6 +641,16 @@ class _ReadRequest(BaseModel):
     mode: ReadMode = ReadMode.SINGLE_ANSWER
     scope: ReadScope | None = None
     read_id: str | None = None
+    include_related_types: RelatedTypesMode | None = None
+
+    @model_serializer(mode="wrap")
+    def _omit_unset_related_types(self, handler: Any) -> dict[str, Any]:
+        # Omit the key entirely when unset: a server that predates the option rejects
+        # unknown request fields, so a read that does not ask must stay byte-identical.
+        data = handler(self)
+        if self.include_related_types is None:
+            data.pop("include_related_types", None)
+        return data
 
 
 # ---------------------------------------------------------------------------

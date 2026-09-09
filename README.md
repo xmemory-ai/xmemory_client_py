@@ -328,6 +328,40 @@ Each `ScopeObject` names one object by its `type` plus its user-defined primary
 primary-key field. Only objects of a type that has a user-defined primary key
 can be scoped. Scoped reads compose with `read_mode`.
 
+#### Related types
+
+A read can also say what else the memory could answer about. Pass
+`include_related_types=RelatedTypesMode.TYPES` and `related_types` on the
+result names the object types the read touched, each with the fields it did
+not return and the object types a declared relation links it to (the relation,
+both roles, and its cardinality seen from the touched type), plus a catalog
+that describes every named type (description, primary key, field names) and
+relation once. It is derived from the instance schema and the statements the
+read executed — no extra rows, no model call — so an agent can ask a deliberate
+follow-up instead of guessing what the store holds.
+
+```python
+from xmemory import RelatedTypesMode
+
+result = inst.read(
+    "Which courses require an English test?",
+    include_related_types=RelatedTypesMode.TYPES,
+)
+for touched in result.related_types.touched:
+    print(touched.object_type, "did not return", touched.fields_not_returned)
+    for link in touched.related:
+        neighbour = result.related_types.types[link.object_type]
+        print("  linked to", link.object_type, "via", link.relation, neighbour.fields)
+```
+
+`related_types` is `None` unless the read asked for it. A requested read that
+executed nothing arrives with `touched == []`. The server caps the payload;
+`truncated` says when it did, and `omitted_touched` and each entry's
+`omitted_related` count what was dropped. Asking for it needs the
+`instance.get_own` permission on the API key, the same one the schema
+endpoints need, on top of `data.read`: a key without it gets a 403 whose
+message names the permission, and the plain read is unaffected.
+
 #### Scoped writes
 
 A write is normally free to touch anything in the instance: the extractor sees
@@ -655,6 +689,7 @@ except XmemoryAPIError as e:
 | HTTP | `.code` | Meaning | Retryable? |
 |---|---|---|---|
 | 422 | `INVALID_INPUT` | The read answered nothing: in `raw-tables` / `xresponse` mode every sub-query's SQL failed, or the model provider declined the input. See [What comes back](#what-comes-back). | No — the same input gives the same answer. |
+| 403 | `FORBIDDEN` | The API key lacks a permission the call needs — for a read with `include_related_types=RelatedTypesMode.TYPES`, `instance.get_own`; the message names it. See [Related types](#related-types). | No — repeat without the option, or use a key that holds it. |
 
 ### Schema-evolution codes
 
