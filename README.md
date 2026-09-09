@@ -2,6 +2,8 @@
 
 Python client library for the [xmemory](https://xmemory.ai) API.
 
+`FUBAR`
+
 ## Quick start
 
 ```python
