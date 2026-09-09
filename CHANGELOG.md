@@ -2,6 +2,27 @@
 
 All notable changes to `xmemory-ai` are documented here.
 
+## 0.17.1
+
+Documentation-only release: states what a read answers with, now that the API
+says it the same way for a single question and a composite one. A read gives one
+of four answers, and in `raw-tables` / `xresponse` mode the value of
+`reader_result` says which: rows; the empty result, exactly
+`{"columns": [], "rows": []}` or `{"objects": [], "relations": []}`, when the
+query executed and matched nothing; `None` when the schema provably cannot
+represent the concept; and no result at all when every sub-query's SQL failed —
+that read raises `XmemoryAPIError` with `.status` `422` and `.code`
+`INVALID_INPUT` instead of arriving as an empty table or a server error. The
+same values appear per sub-query in `reader_results`, where a failed sub-query
+carries the empty result with `error` set, so read `error` first.
+
+No API or behavior change: `reader_result` was always a passthrough of whatever
+the server sent, and this release pins that with tests and says it in the
+docstrings and the README (*What comes back*, and `422 INVALID_INPUT` under
+*Read codes*). Against a server without the API change, a read that matched
+nothing came back as `None` at the top level and as a column-bearing empty table
+under `reader_results`; the shapes above are what a server carrying it sends.
+
 ## 0.17.0
 
 Sends an `X-Xmemory-Client` header on every request so the server can attribute traffic to this SDK.

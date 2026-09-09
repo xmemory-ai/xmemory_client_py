@@ -93,6 +93,14 @@ class InstanceAPI:
     ) -> ReadResult:
         """Query this instance and return a structured answer.
 
+        In ``single-answer`` mode ``reader_result`` is the prose answer. In
+        ``raw-tables`` / ``xresponse`` mode its value is the answer: rows; the
+        empty result when the query executed and matched nothing; ``None`` when
+        the schema provably cannot represent the concept. A read that answered
+        nothing because every sub-query's SQL failed raises
+        :class:`XmemoryAPIError` with ``status`` 422 and ``code``
+        ``"INVALID_INPUT"``. See :class:`ReadResult`.
+
         Pass ``scope`` (a :class:`ReadScope` of concrete :class:`ScopeObject`\\ s,
         each identified by its user-defined primary key) to restrict the read;
         set ``ReadScope.relations_scope='all_relations'`` to also expose relations among them.
@@ -340,6 +348,14 @@ class AsyncInstanceAPI:
         timeout: float | None = None,
     ) -> ReadResult:
         """Query this instance and return a structured answer.
+
+        In ``single-answer`` mode ``reader_result`` is the prose answer. In
+        ``raw-tables`` / ``xresponse`` mode its value is the answer: rows; the
+        empty result when the query executed and matched nothing; ``None`` when
+        the schema provably cannot represent the concept. A read that answered
+        nothing because every sub-query's SQL failed raises
+        :class:`XmemoryAPIError` with ``status`` 422 and ``code``
+        ``"INVALID_INPUT"``. See :class:`ReadResult`.
 
         Pass ``scope`` (a :class:`ReadScope` of concrete :class:`ScopeObject`\\ s,
         each identified by its user-defined primary key) to restrict the read;

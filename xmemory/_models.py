@@ -141,9 +141,15 @@ class TaggedReaderResult(BaseModel):
     """One sub-query and its own answer, in the requested read mode.
 
     Present in :attr:`ReadResult.reader_results` when the server decomposed a
-    composite query into independent sub-queries. ``error`` is a user-safe
-    message set when that sub-query could not be answered while the others still
-    were (partial tolerance); ``None`` otherwise.
+    composite query into independent sub-queries. ``reader_result`` gives one of
+    the four answers described on :class:`ReadResult`, with one more case: a
+    sub-query whose SQL failed carries the empty result *and* ``error``, a
+    user-safe message, while the other sub-queries are answered regardless. Its
+    bytes then equal those of a sub-query that matched nothing, so read ``error``
+    before ``reader_result``; ``error`` is ``None`` otherwise. In ``raw-tables`` /
+    ``xresponse`` mode a read where every sub-query failed does not return at
+    all: it raises :class:`XmemoryAPIError` with ``status`` 422 and ``code``
+    ``"INVALID_INPUT"``.
     """
 
     sub_query: str
@@ -163,6 +169,30 @@ class TaggedReaderResult(BaseModel):
 
 
 class ReadResult(BaseModel):
+    """What a read answered.
+
+    In ``single-answer`` mode ``reader_result`` is always the prose answer, never
+    ``None``. In ``raw-tables`` / ``xresponse`` mode its value says which of four
+    answers the read gave:
+
+    - rows: answered;
+    - exactly ``{"columns": [], "rows": []}`` (``raw-tables``) or
+      ``{"objects": [], "relations": []}`` (``xresponse``): the query executed and
+      matched nothing -- every table and column it used exists, so the data is
+      absent;
+    - ``None``: the schema provably cannot represent the concept. An answer in its
+      own right, not a variant of the empty one: this memory cannot hold it, so a
+      better-matching instance is worth trying;
+    - no result at all: every sub-query's SQL failed, so nothing was answered. The
+      read raises :class:`XmemoryAPIError` with ``status`` 422 and ``code``
+      ``"INVALID_INPUT"`` rather than reporting an empty result.
+
+    For a composite query ``reader_result`` is the combined answer, folded from
+    the parts: rows if any sub-query answered; else the empty result if any
+    executed and matched nothing; else ``None``. ``reader_results`` carries each
+    part's own answer.
+    """
+
     trace_id: str | None = None
     console_url: str | None = None
     reader_result: Any = None
