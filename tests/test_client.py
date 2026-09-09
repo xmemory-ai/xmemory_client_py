@@ -31,6 +31,7 @@ from xmemory import (
     ProjectFragment,
     ScopeObject,
     ProjectSetup,
+    ReadMode,
     SchemaType,
     SetupFormat,
     StepKind,
@@ -520,6 +521,61 @@ def test_instance_read_decomposed(httpx_mock, client):
     assert resp.reader_results[0].reader_result == "An engineer"
     assert resp.reader_results[0].error is None
     assert resp.reader_results[1].error == "no data"
+
+
+def test_instance_read_keeps_a_refusal_as_none(httpx_mock, client):
+    """In the tabular modes ``None`` is an answer -- the schema cannot represent the
+    concept -- and a part that failed is told apart from one that matched nothing
+    by ``error`` alone. Neither value may be rewritten on the way through."""
+    route = httpx_mock.post(f"/instances/{INSTANCE_ID}/read").mock(return_value=httpx.Response(200, json=_api_ok([
+        {
+            "trace_id": "r-1",
+            "reader_result": None,
+            "reader_results": [
+                {"sub_query": "Which invoices are overdue?", "reader_result": None, "error": None},
+                {"sub_query": "Who approved them?", "reader_result": {"columns": [], "rows": []}, "error": "SQL failed"},
+            ],
+        },
+    ])))
+
+    resp = client.instance(INSTANCE_ID).read(
+        "Which invoices are overdue, and who approved them?", read_mode=ReadMode.RAW_TABLES,
+    )
+
+    assert resp.reader_result is None
+    assert resp.reader_results[0].reader_result is None
+    assert resp.reader_results[0].error is None
+    assert resp.reader_results[1].reader_result == {"columns": [], "rows": []}
+    assert resp.reader_results[1].error == "SQL failed"
+    assert b'"mode":"raw-tables"' in route.calls.last.request.content
+
+
+def test_instance_read_keeps_an_empty_result(httpx_mock, client):
+    """A read that matched nothing is exactly the empty result -- the shape one
+    emptiness check works against, at the top level as under ``reader_results``."""
+    httpx_mock.post(f"/instances/{INSTANCE_ID}/read").mock(return_value=httpx.Response(200, json=_api_ok([
+        {"trace_id": "r-1", "reader_result": {"columns": [], "rows": []}},
+    ])))
+
+    resp = client.instance(INSTANCE_ID).read("Which invoices are overdue?", read_mode=ReadMode.RAW_TABLES)
+
+    assert resp.reader_result == {"columns": [], "rows": []}
+    assert resp.reader_results == []
+
+
+def test_instance_read_that_answered_nothing_raises(httpx_mock, client):
+    """A read whose every sub-query's SQL failed is a 422 the caller can branch on,
+    not an empty result and not a server error."""
+    httpx_mock.post(f"/instances/{INSTANCE_ID}/read").mock(return_value=httpx.Response(
+        422,
+        json={"errors": [{"code": "INVALID_INPUT", "message": "This query could not be answered: its SQL failed to execute."}]},
+    ))
+
+    with pytest.raises(XmemoryAPIError) as exc:
+        client.instance(INSTANCE_ID).read("Which invoices are overdue?", read_mode=ReadMode.RAW_TABLES)
+
+    assert exc.value.status == 422
+    assert exc.value.code == "INVALID_INPUT"
 
 
 def test_instance_describe_exposes_about(httpx_mock, client):
