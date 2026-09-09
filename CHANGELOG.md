@@ -2,6 +2,38 @@
 
 All notable changes to `xmemory-ai` are documented here.
 
+## 0.18.0
+
+A read can now say what else the memory could answer about. Pass
+`include_related_types=RelatedTypesMode.TYPES` and the result carries
+`related_types`: the object types the read touched, each with the fields it did
+not return and the object types a declared relation links it to, plus a catalog
+that describes every named type and relation once. It is derived from the
+instance schema and the statements the read executed, so it costs no extra rows
+and no model call, and an agent can phrase a deliberate follow-up read instead
+of guessing.
+
+### Added
+
+- `include_related_types` on both `read()` methods, sent as
+  `include_related_types` only when set, and `ReadResult.related_types`, `None`
+  unless the read asked for it. The `RelatedTypes` model and its parts —
+  `RelatedTypesTouched`, `RelatedTypesLink`, `RelatedTypesObjectType`,
+  `RelatedTypesRelation` — and the `RelatedTypesMode` and `RelationCardinality`
+  enums are exported. A cardinality this release does not know arrives as a
+  plain string rather than failing the read.
+- `403 FORBIDDEN` joins the read codes: the option needs the `instance.get_own`
+  permission on the API key, the same one the schema endpoints need, and the
+  server names it in the message.
+
+### Notes
+
+The server caps the payload and says so: `truncated`, `omitted_touched` and each
+touched type's `omitted_related` count what was dropped. A server that predates
+the option rejects the unknown body field, so only pass `include_related_types`
+to a server that carries it; a read that does not pass it is byte-identical to
+before.
+
 ## 0.17.1
 
 Documentation-only release: states what a read answers with, now that the API

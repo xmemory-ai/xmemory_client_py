@@ -1362,6 +1362,133 @@ async def test_async_create_instance_returns_async_instance_api(httpx_mock, asyn
     assert route.called
 
 
+_RELATED_TYPES = {
+    "touched": [
+        {
+            "object_type": "course",
+            "fields_not_returned": ["credits", "faculty"],
+            "related": [
+                {
+                    "object_type": "university",
+                    "relation": "offering",
+                    "touched_role": "course",
+                    "related_role": "university",
+                    "cardinality": "many_to_many",
+                }
+            ],
+            "omitted_related": 0,
+        }
+    ],
+    "types": {
+        "course": {"description": "An academic programme", "primary_key": ["code"], "fields": ["code", "credits", "faculty", "name"]},
+        "university": {"description": None, "primary_key": ["code"], "fields": ["city", "code", "name"]},
+    },
+    "relations": {"offering": {"description": "A university offers a course"}},
+    "omitted_touched": 0,
+    "truncated": False,
+}
+
+
+def test_instance_read_asks_for_related_types_only_when_told(httpx_mock, client):
+    """The option is sent only when set, so a read that does not ask stays byte-identical for older servers."""
+    from xmemory import RelatedTypesMode, RelationCardinality
+
+    route = httpx_mock.post(f"/instances/{INSTANCE_ID}/read").mock(return_value=httpx.Response(200, json=_api_ok([
+        {"trace_id": "r-1", "reader_result": {"answer": "CS101"}, "related_types": _RELATED_TYPES},
+    ])))
+
+    resp = client.instance(INSTANCE_ID).read(
+        "Which courses require an English test?", include_related_types=RelatedTypesMode.TYPES,
+    )
+
+    assert b'"include_related_types":"types"' in route.calls.last.request.content
+    assert resp.related_types is not None
+    touched = resp.related_types.touched[0]
+    assert touched.object_type == "course"
+    assert touched.fields_not_returned == ["credits", "faculty"]
+    assert touched.related[0].relation == "offering"
+    assert touched.related[0].cardinality is RelationCardinality.MANY_TO_MANY
+    assert resp.related_types.types["university"].fields == ["city", "code", "name"]
+    assert resp.related_types.relations["offering"].description == "A university offers a course"
+    assert resp.related_types.truncated is False
+
+    plain = client.instance(INSTANCE_ID).read("Which courses require an English test?")
+
+    assert b"include_related_types" not in route.calls.last.request.content
+    assert plain.related_types is not None  # the stub answers the same body; see the next test for absence
+
+
+def test_instance_read_without_related_types_in_the_response_reads_as_none(httpx_mock, client):
+    httpx_mock.post(f"/instances/{INSTANCE_ID}/read").mock(return_value=httpx.Response(200, json=_api_ok([
+        {"trace_id": "r-1", "reader_result": {"answer": "CS101"}},
+    ])))
+
+    resp = client.instance(INSTANCE_ID).read("Which courses require an English test?")
+
+    assert resp.related_types is None
+
+
+def test_instance_read_tolerates_a_cardinality_this_release_does_not_know(httpx_mock, client):
+    from xmemory import RelatedTypesMode
+
+    payload = {**_RELATED_TYPES}
+    payload["touched"] = [{**_RELATED_TYPES["touched"][0], "related": [{**_RELATED_TYPES["touched"][0]["related"][0], "cardinality": "someday"}]}]
+    httpx_mock.post(f"/instances/{INSTANCE_ID}/read").mock(return_value=httpx.Response(200, json=_api_ok([
+        {"trace_id": "r-1", "reader_result": {"answer": "CS101"}, "related_types": payload},
+    ])))
+
+    resp = client.instance(INSTANCE_ID).read("q", include_related_types=RelatedTypesMode.TYPES)
+
+    assert resp.related_types is not None
+    assert resp.related_types.touched[0].related[0].cardinality == "someday"
+
+
+def test_instance_read_related_types_need_the_schema_permission(httpx_mock, client):
+    """A key without ``instance.get_own`` is refused with a 403 that names the permission."""
+    from xmemory import RelatedTypesMode
+
+    httpx_mock.post(f"/instances/{INSTANCE_ID}/read").mock(return_value=httpx.Response(
+        403,
+        json={"errors": [{"code": "FORBIDDEN", "message": (
+            "Related types need the instance.get_own permission, which this API key does not have. "
+            'Repeat the read without include_related_types (or with "none") to get the answer alone.'
+        )}]},
+    ))
+
+    with pytest.raises(XmemoryAPIError) as exc:
+        client.instance(INSTANCE_ID).read("q", include_related_types=RelatedTypesMode.TYPES)
+
+    assert exc.value.status == 403
+    assert exc.value.code == "FORBIDDEN"
+    assert "instance.get_own" in str(exc.value)
+
+
+async def test_async_instance_read_asks_for_related_types(httpx_mock, async_client):
+    from xmemory import RelatedTypesMode
+
+    route = httpx_mock.post(f"/instances/{INSTANCE_ID}/read").mock(return_value=httpx.Response(200, json=_api_ok([
+        {"trace_id": "r-1", "reader_result": {"answer": "CS101"}, "related_types": _RELATED_TYPES},
+    ])))
+
+    resp = await async_client.instance(INSTANCE_ID).read("q", include_related_types=RelatedTypesMode.TYPES)
+
+    assert b'"include_related_types":"types"' in route.calls.last.request.content
+    assert resp.related_types is not None and resp.related_types.touched[0].object_type == "course"
+
+
+def test_read_request_omits_related_types_unless_set() -> None:
+    from xmemory import RelatedTypesMode
+    from xmemory._models import ReadMode, _ReadRequest
+
+    plain = _ReadRequest(query="q", mode=ReadMode.SINGLE_ANSWER).model_dump(by_alias=True)
+    asked = _ReadRequest(query="q", mode=ReadMode.SINGLE_ANSWER, include_related_types=RelatedTypesMode.TYPES).model_dump(
+        by_alias=True
+    )
+
+    assert "include_related_types" not in plain
+    assert asked["include_related_types"] == RelatedTypesMode.TYPES
+
+
 def test_scope_serializes_to_canonical_wire_shape() -> None:
     """ReadScope/ScopeObject must emit the API's identity-ADT + relations_scope shape."""
     from xmemory import ReadScope, ScopeObject

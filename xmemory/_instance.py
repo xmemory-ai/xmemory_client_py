@@ -14,6 +14,7 @@ from xmemory._models import (
     ReadMode,
     ReadResult,
     ReadScope,
+    RelatedTypesMode,
     WriteScope,
     SetupFormat,
     WriteMutation,
@@ -88,6 +89,7 @@ class InstanceAPI:
         *,
         read_mode: ReadMode = ReadMode.SINGLE_ANSWER,
         scope: ReadScope | None = None,
+        include_related_types: RelatedTypesMode | None = None,
         read_id: str | None = None,
         timeout: float | None = None,
     ) -> ReadResult:
@@ -104,10 +106,18 @@ class InstanceAPI:
         Pass ``scope`` (a :class:`ReadScope` of concrete :class:`ScopeObject`\\ s,
         each identified by its user-defined primary key) to restrict the read;
         set ``ReadScope.relations_scope='all_relations'`` to also expose relations among them.
+
+        Pass ``include_related_types=RelatedTypesMode.TYPES`` to also get
+        :attr:`ReadResult.related_types`: the object types the read touched, the
+        fields it did not return, and the object types a declared relation links
+        them to, so a follow-up read can be deliberate. Needs ``instance.get_own``
+        on the API key; see :class:`RelatedTypesMode`.
         """
         return self._t.request_one(
             "POST", f"/instances/{self._id}/read", ReadResult,
-            body=_ReadRequest(query=query, mode=read_mode, scope=scope, read_id=read_id),
+            body=_ReadRequest(
+                query=query, mode=read_mode, scope=scope, read_id=read_id, include_related_types=include_related_types
+            ),
             timeout=timeout,
         )
 
@@ -344,6 +354,7 @@ class AsyncInstanceAPI:
         *,
         read_mode: ReadMode = ReadMode.SINGLE_ANSWER,
         scope: ReadScope | None = None,
+        include_related_types: RelatedTypesMode | None = None,
         read_id: str | None = None,
         timeout: float | None = None,
     ) -> ReadResult:
@@ -360,10 +371,18 @@ class AsyncInstanceAPI:
         Pass ``scope`` (a :class:`ReadScope` of concrete :class:`ScopeObject`\\ s,
         each identified by its user-defined primary key) to restrict the read;
         set ``ReadScope.relations_scope='all_relations'`` to also expose relations among them.
+
+        Pass ``include_related_types=RelatedTypesMode.TYPES`` to also get
+        :attr:`ReadResult.related_types`: the object types the read touched, the
+        fields it did not return, and the object types a declared relation links
+        them to, so a follow-up read can be deliberate. Needs ``instance.get_own``
+        on the API key; see :class:`RelatedTypesMode`.
         """
         return await self._t.request_one(
             "POST", f"/instances/{self._id}/read", ReadResult,
-            body=_ReadRequest(query=query, mode=read_mode, scope=scope, read_id=read_id),
+            body=_ReadRequest(
+                query=query, mode=read_mode, scope=scope, read_id=read_id, include_related_types=include_related_types
+            ),
             timeout=timeout,
         )
 
