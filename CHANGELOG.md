@@ -2,6 +2,13 @@
 
 All notable changes to `xmemory-ai` are documented here.
 
+## 0.19.0
+
+The `related_types` catalog of object types is now `objects` (was `types`), so
+the two catalogs read as a pair, `objects` and `relations`. `RelatedTypes.objects`
+replaces `RelatedTypes.types`; nothing else changes. Requires a server that
+serves the renamed key; an older server's payload is rejected as unknown.
+
 ## 0.18.0
 
 A read can now say what else the memory could answer about. Pass
