@@ -198,9 +198,9 @@ class TaggedReaderResult(BaseModel):
 
 
 class RelatedTypesLink(BaseModel):
-    """One relation edge from a touched type to a neighbouring type; :attr:`RelatedTypes.types` describes both ends."""
+    """One relation edge from a touched type to a neighbouring type; :attr:`RelatedTypes.objects` describes both ends."""
 
-    # The neighbouring object type, described once under ``RelatedTypes.types``.
+    # The neighbouring object type, described once under ``RelatedTypes.objects``.
     object_type: str
     # The relation that links the two, described once under ``RelatedTypes.relations``.
     relation: str
@@ -215,7 +215,7 @@ class RelatedTypesLink(BaseModel):
 class RelatedTypesTouched(BaseModel):
     """One object type the read touched, with what it withheld and what it is linked to."""
 
-    # Object type name as declared in the schema, described under ``RelatedTypes.types``.
+    # Object type name as declared in the schema, described under ``RelatedTypes.objects``.
     object_type: str
     # Fields of this type the read did not project. Ask for one by name to see it; an expression
     # the reader could not attribute to a field counts here rather than as returned.
@@ -258,7 +258,7 @@ class RelatedTypes(BaseModel):
     # Object types the read touched, sorted by name. Empty when the read executed nothing.
     touched: list[RelatedTypesTouched] = []
     # Every object type named in ``touched``, touched or neighbouring, once.
-    types: dict[str, RelatedTypesObjectType] = {}
+    objects: dict[str, RelatedTypesObjectType] = {}
     # Every relation named by an edge, once.
     relations: dict[str, RelatedTypesRelation] = {}
     # Touched types dropped to stay within the budget.

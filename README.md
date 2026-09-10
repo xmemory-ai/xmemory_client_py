@@ -350,7 +350,7 @@ result = inst.read(
 for touched in result.related_types.touched:
     print(touched.object_type, "did not return", touched.fields_not_returned)
     for link in touched.related:
-        neighbour = result.related_types.types[link.object_type]
+        neighbour = result.related_types.objects[link.object_type]
         print("  linked to", link.object_type, "via", link.relation, neighbour.fields)
 ```
 

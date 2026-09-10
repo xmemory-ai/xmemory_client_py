@@ -1379,7 +1379,7 @@ _RELATED_TYPES = {
             "omitted_related": 0,
         }
     ],
-    "types": {
+    "objects": {
         "course": {"description": "An academic programme", "primary_key": ["code"], "fields": ["code", "credits", "faculty", "name"]},
         "university": {"description": None, "primary_key": ["code"], "fields": ["city", "code", "name"]},
     },
@@ -1408,7 +1408,7 @@ def test_instance_read_asks_for_related_types_only_when_told(httpx_mock, client)
     assert touched.fields_not_returned == ["credits", "faculty"]
     assert touched.related[0].relation == "offering"
     assert touched.related[0].cardinality is RelationCardinality.MANY_TO_MANY
-    assert resp.related_types.types["university"].fields == ["city", "code", "name"]
+    assert resp.related_types.objects["university"].fields == ["city", "code", "name"]
     assert resp.related_types.relations["offering"].description == "A university offers a course"
     assert resp.related_types.truncated is False
 
