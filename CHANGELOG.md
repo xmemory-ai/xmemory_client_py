@@ -2,6 +2,24 @@
 
 All notable changes to `xmemory-ai` are documented here.
 
+## 0.20.0
+
+A read can follow the relations further than the touched types' own edges. Pass
+`related_types_depth=2` (or 3) alongside
+`include_related_types=RelatedTypesMode.TYPES` and every entry under
+`related_types.objects` carries its `distance` from the touched types and,
+between the touched types and the last level, its own `related` edges; the
+payload echoes the levels served as `depth`. Left unset, nothing is sent and the
+server serves one level as before. Requires a server that accepts the field.
+
+### Added
+
+- `related_types_depth` on both `read()` methods, sent as `related_types_depth`
+  only when set.
+- `RelatedTypesObjectType.distance`, `.related` and `.omitted_related`;
+  `RelatedTypes.depth` and `.omitted_objects`. All default to the depth-1 values,
+  so an older server's payload still parses.
+
 ## 0.19.0
 
 The `related_types` catalog of object types is now `objects` (was `types`), so

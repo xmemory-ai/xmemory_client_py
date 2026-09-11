@@ -198,13 +198,18 @@ class TaggedReaderResult(BaseModel):
 
 
 class RelatedTypesLink(BaseModel):
-    """One relation edge from a touched type to a neighbouring type; :attr:`RelatedTypes.objects` describes both ends."""
+    """One relation edge from the entry's own type to a neighbouring type; :attr:`RelatedTypes.objects` describes both ends.
+
+    The entry is a touched type (under ``touched``) or, at a ``related_types_depth`` above 1, a
+    catalog entry (under ``objects``); ``touched_role`` is the role the entry's own type plays
+    either way.
+    """
 
     # The neighbouring object type, described once under ``RelatedTypes.objects``.
     object_type: str
     # The relation that links the two, described once under ``RelatedTypes.relations``.
     relation: str
-    # The roles the touched type and the neighbouring type play in this edge.
+    # The roles the entry's own type and the neighbouring type play in this edge.
     touched_role: str
     related_role: str
     # Left-to-right so a value this release knows arrives as the enum member while one a newer
@@ -228,13 +233,22 @@ class RelatedTypesTouched(BaseModel):
 
 
 class RelatedTypesObjectType(BaseModel):
-    """Catalog entry for an object type named anywhere in :attr:`RelatedTypes.touched`."""
+    """Catalog entry for an object type named in :attr:`RelatedTypes.touched` or reached through ``related_types_depth``."""
 
+    # Relation hops from the touched types: 0 for a touched type, 1 for a type a touched type's
+    # edge names, and so on up to ``RelatedTypes.depth``; the shortest route counts.
+    distance: int = 0
     description: str | None = None
     # Declared primary-key fields, in declared order.
     primary_key: list[str] = []
     # Every field of the object type, by name.
     fields: list[str] = []
+    # This type's own relation edges, for an entry whose ``distance`` is at least 1 and below
+    # ``RelatedTypes.depth``. Empty for a touched type (its edges are on its ``touched`` entry)
+    # and at the last level served.
+    related: list[RelatedTypesLink] = []
+    # Edges dropped from ``related`` to stay within the server's payload budget.
+    omitted_related: int = 0
 
 
 class RelatedTypesRelation(BaseModel):
@@ -250,20 +264,29 @@ class RelatedTypes(BaseModel):
     its relation edges, plus a catalog that describes every named type and relation
     exactly once. It is derived from the instance schema and the statements the
     read executed -- no extra rows are read and no model is called -- so an agent
-    can phrase a deliberate follow-up read instead of guessing. The server caps the
-    payload; whatever it dropped is counted on the entry it was dropped from, and
+    can phrase a deliberate follow-up read instead of guessing. With a
+    ``related_types_depth`` above 1 the catalog follows the relations further: each
+    entry carries its ``distance`` from the touched types and, below the last level,
+    its own edges. The server caps the payload; whatever it dropped is counted on the
+    entry it was dropped from, a level dropped whole lowers ``depth``, and
     ``truncated`` says that something was.
     """
 
+    # Relation levels served: the requested ``related_types_depth`` (1 when unset), or fewer
+    # when the byte budget dropped the deepest level, in which case ``truncated`` is set.
+    depth: int = 1
     # Object types the read touched, sorted by name. Empty when the read executed nothing.
     touched: list[RelatedTypesTouched] = []
-    # Every object type named in ``touched``, touched or neighbouring, once.
+    # Every object type named in ``touched`` or reached within ``depth`` relation levels, once,
+    # each with its ``distance`` from the touched types.
     objects: dict[str, RelatedTypesObjectType] = {}
     # Every relation named by an edge, once.
     relations: dict[str, RelatedTypesRelation] = {}
     # Touched types dropped to stay within the budget.
     omitted_touched: int = 0
-    # ``True`` when any type or edge was dropped for the budget.
+    # Object types listed at a level the byte budget dropped; ``depth`` stops before it.
+    omitted_objects: int = 0
+    # ``True`` when any type, edge or level was dropped for the budget.
     truncated: bool = False
 
 
@@ -642,14 +665,17 @@ class _ReadRequest(BaseModel):
     scope: ReadScope | None = None
     read_id: str | None = None
     include_related_types: RelatedTypesMode | None = None
+    related_types_depth: int | None = None
 
     @model_serializer(mode="wrap")
     def _omit_unset_related_types(self, handler: Any) -> dict[str, Any]:
-        # Omit the key entirely when unset: a server that predates the option rejects
+        # Omit each key entirely when unset: a server that predates the option rejects
         # unknown request fields, so a read that does not ask must stay byte-identical.
         data = handler(self)
         if self.include_related_types is None:
             data.pop("include_related_types", None)
+        if self.related_types_depth is None:
+            data.pop("related_types_depth", None)
         return data
 
 
