@@ -376,10 +376,13 @@ for name, entry in result.related_types.objects.items():
         print("  linked to", link.object_type, "via", link.relation)
 ```
 
-`related_types.depth` echoes the levels served: the depth asked for, or fewer when
-the server's byte budget dropped the deepest level, in which case `truncated` is
-set and `omitted_objects` counts the types that level held. Left unset, nothing is
-sent and the server serves one level; a value outside 1 to 3 is a 422 whose
+`related_types.depth` echoes the depth asked for. `distance` counts listed edges
+from the nearest touched type, and `omitted_objects` counts the types within that
+many relation levels that the server's budgets kept out of the catalog; `truncated`
+says something was cut. Left unset, nothing is sent and the server serves one
+level in the shape it always had: `depth`, `omitted_objects` and the catalog
+entries' `distance`, `related` and `omitted_related` are then absent and read as
+their defaults (`distance` is `None`). A value outside 1 to 3 is a 422 whose
 `code` is `VALIDATION_ERROR`. Asking for related types needs the
 `instance.get_own` permission on the API key, the same one the schema
 endpoints need, on top of `data.read`: a key without it gets a 403 whose
