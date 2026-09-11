@@ -235,19 +235,24 @@ class RelatedTypesTouched(BaseModel):
 class RelatedTypesObjectType(BaseModel):
     """Catalog entry for an object type named in :attr:`RelatedTypes.touched` or reached through ``related_types_depth``."""
 
-    # Relation hops from the touched types: 0 for a touched type, 1 for a type a touched type's
-    # edge names, and so on up to ``RelatedTypes.depth``; the shortest route counts.
-    distance: int = 0
+    # Listed edges from the nearest touched type: 0 for a touched type, 1 for a type a touched
+    # type's listed edge names, and so on up to ``RelatedTypes.depth``. A route through an edge the
+    # server's budget cut is not followed, so this can exceed the schema's own hop count; the
+    # cutting entry's ``omitted_related`` says when. ``None`` when the read asked for one level:
+    # the server then serves the payload it always did, without the depth keys.
+    distance: int | None = None
     description: str | None = None
     # Declared primary-key fields, in declared order.
     primary_key: list[str] = []
     # Every field of the object type, by name.
     fields: list[str] = []
     # This type's own relation edges, for an entry whose ``distance`` is at least 1 and below
-    # ``RelatedTypes.depth``. Empty for a touched type (its edges are on its ``touched`` entry)
-    # and at the last level served.
+    # ``RelatedTypes.depth``. Empty for a touched type (its edges are on its ``touched`` entry),
+    # at the last level, once the server's shared edge budget is spent (then ``omitted_related``
+    # counts every edge the type has), and on a one-level read.
     related: list[RelatedTypesLink] = []
-    # Edges dropped from ``related`` to stay within the server's payload budget.
+    # Edges of this type the server did not list: cut by its per-type cap, by the edge budget
+    # shared with the touched entries, or dropped with a level for its byte budget.
     omitted_related: int = 0
 
 
@@ -265,26 +270,31 @@ class RelatedTypes(BaseModel):
     exactly once. It is derived from the instance schema and the statements the
     read executed -- no extra rows are read and no model is called -- so an agent
     can phrase a deliberate follow-up read instead of guessing. With a
-    ``related_types_depth`` above 1 the catalog follows the relations further: each
+    ``related_types_depth`` above 1 the catalog follows the listed edges further: each
     entry carries its ``distance`` from the touched types and, below the last level,
-    its own edges. The server caps the payload; whatever it dropped is counted on the
-    entry it was dropped from, a level dropped whole lowers ``depth``, and
-    ``truncated`` says that something was.
+    its own edges. The server caps the payload; whatever it dropped is counted — an
+    edge on the entry it was dropped from, a type the catalog could not list on
+    ``omitted_objects`` — and ``truncated`` says that something was. A one-level read
+    is served in the shape that predates the depth, so ``depth``, ``omitted_objects``
+    and the catalog entries' depth fields then read as their defaults.
     """
 
-    # Relation levels served: the requested ``related_types_depth`` (1 when unset), or fewer
-    # when the byte budget dropped the deepest level, in which case ``truncated`` is set.
+    # Relation levels asked for (``related_types_depth``; 1 when unset). Never lowered by the
+    # server: what its budgets kept the walk from listing is counted on ``omitted_objects`` and
+    # on each entry's ``omitted_related``.
     depth: int = 1
     # Object types the read touched, sorted by name. Empty when the read executed nothing.
     touched: list[RelatedTypesTouched] = []
-    # Every object type named in ``touched`` or reached within ``depth`` relation levels, once,
-    # each with its ``distance`` from the touched types.
+    # Every object type a listed edge names — touched, or reached through the listed edges within
+    # ``depth`` levels — once.
     objects: dict[str, RelatedTypesObjectType] = {}
     # Every relation named by an edge, once.
     relations: dict[str, RelatedTypesRelation] = {}
     # Touched types dropped to stay within the budget.
     omitted_touched: int = 0
-    # Object types listed at a level the byte budget dropped; ``depth`` stops before it.
+    # Object types within ``depth`` relation levels of the touched types in the schema that the
+    # catalog does not list: the route to them ran through an edge the server's budget cut, or
+    # their level was dropped for its byte budget.
     omitted_objects: int = 0
     # ``True`` when any type, edge or level was dropped for the budget.
     truncated: bool = False

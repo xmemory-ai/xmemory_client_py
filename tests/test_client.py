@@ -1545,6 +1545,7 @@ def test_a_depth_one_payload_without_the_depth_keys_still_parses(httpx_mock, cli
 
     assert resp.related_types is not None and resp.related_types.depth == 1
     assert resp.related_types.omitted_objects == 0 and resp.related_types.objects["university"].related == []
+    assert resp.related_types.objects["university"].distance is None
 
 
 async def test_async_instance_read_sends_the_depth(httpx_mock, async_client):

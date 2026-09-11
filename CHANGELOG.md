@@ -9,16 +9,19 @@ A read can follow the relations further than the touched types' own edges. Pass
 `include_related_types=RelatedTypesMode.TYPES` and every entry under
 `related_types.objects` carries its `distance` from the touched types and,
 between the touched types and the last level, its own `related` edges; the
-payload echoes the levels served as `depth`. Left unset, nothing is sent and the
-server serves one level as before. Requires a server that accepts the field.
+payload echoes the depth asked for as `depth` and counts what the server's
+budgets kept out of the catalog on `omitted_objects`. Left unset, nothing is sent
+and the server serves one level in the shape it always had. Requires a server
+that accepts the field.
 
 ### Added
 
 - `related_types_depth` on both `read()` methods, sent as `related_types_depth`
   only when set.
-- `RelatedTypesObjectType.distance`, `.related` and `.omitted_related`;
-  `RelatedTypes.depth` and `.omitted_objects`. All default to the depth-1 values,
-  so an older server's payload still parses.
+- `RelatedTypesObjectType.distance` (`None` on a one-level read), `.related` and
+  `.omitted_related`; `RelatedTypes.depth` and `.omitted_objects`. A one-level
+  read carries none of these keys and they read as their defaults, so an older
+  server's payload parses too.
 
 ## 0.19.0
 
