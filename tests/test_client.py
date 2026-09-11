@@ -1476,6 +1476,92 @@ async def test_async_instance_read_asks_for_related_types(httpx_mock, async_clie
     assert resp.related_types is not None and resp.related_types.touched[0].object_type == "course"
 
 
+_RELATED_TYPES_DEEP = {
+    "depth": 2,
+    "touched": _RELATED_TYPES["touched"],
+    "objects": {
+        "course": {
+            "distance": 0, "description": "An academic programme", "primary_key": ["code"],
+            "fields": ["code", "credits", "faculty", "name"], "related": [], "omitted_related": 0,
+        },
+        "university": {
+            "distance": 1, "description": None, "primary_key": ["code"], "fields": ["city", "code", "name"],
+            "related": [
+                {
+                    "object_type": "event",
+                    "relation": "university_event",
+                    "touched_role": "university",
+                    "related_role": "event",
+                    "cardinality": "unconstrained",
+                }
+            ],
+            "omitted_related": 0,
+        },
+        "event": {
+            "distance": 2, "description": None, "primary_key": ["name", "date"], "fields": ["date", "name"],
+            "related": [], "omitted_related": 0,
+        },
+    },
+    "relations": {"offering": {"description": "A university offers a course"}, "university_event": {"description": None}},
+    "omitted_touched": 0,
+    "omitted_objects": 0,
+    "truncated": False,
+}
+
+
+def test_instance_read_sends_the_depth_only_when_set_and_reads_the_walk(httpx_mock, client):
+    from xmemory import RelatedTypesMode
+
+    route = httpx_mock.post(f"/instances/{INSTANCE_ID}/read").mock(return_value=httpx.Response(200, json=_api_ok([
+        {"trace_id": "r-1", "reader_result": {"answer": "CS101"}, "related_types": _RELATED_TYPES_DEEP},
+    ])))
+
+    resp = client.instance(INSTANCE_ID).read("q", include_related_types=RelatedTypesMode.TYPES, related_types_depth=2)
+
+    assert b'"related_types_depth":2' in route.calls.last.request.content
+    assert resp.related_types is not None and resp.related_types.depth == 2
+    assert {name: entry.distance for name, entry in resp.related_types.objects.items()} == {
+        "course": 0, "university": 1, "event": 2,
+    }
+    university = resp.related_types.objects["university"]
+    assert university.related[0].object_type == "event" and university.related[0].touched_role == "university"
+    assert university.related[0].cardinality == "unconstrained"
+    assert resp.related_types.objects["event"].related == [] and resp.related_types.omitted_objects == 0
+
+    client.instance(INSTANCE_ID).read("q", include_related_types=RelatedTypesMode.TYPES)
+
+    assert b"related_types_depth" not in route.calls.last.request.content
+
+
+def test_a_depth_one_payload_without_the_depth_keys_still_parses(httpx_mock, client):
+    # The depth keys are additive; a server that predates them serves the payload without them.
+    from xmemory import RelatedTypesMode
+
+    httpx_mock.post(f"/instances/{INSTANCE_ID}/read").mock(return_value=httpx.Response(200, json=_api_ok([
+        {"trace_id": "r-1", "reader_result": {"answer": "CS101"}, "related_types": _RELATED_TYPES},
+    ])))
+
+    resp = client.instance(INSTANCE_ID).read("q", include_related_types=RelatedTypesMode.TYPES)
+
+    assert resp.related_types is not None and resp.related_types.depth == 1
+    assert resp.related_types.omitted_objects == 0 and resp.related_types.objects["university"].related == []
+
+
+async def test_async_instance_read_sends_the_depth(httpx_mock, async_client):
+    from xmemory import RelatedTypesMode
+
+    route = httpx_mock.post(f"/instances/{INSTANCE_ID}/read").mock(return_value=httpx.Response(200, json=_api_ok([
+        {"trace_id": "r-1", "reader_result": {"answer": "CS101"}, "related_types": _RELATED_TYPES_DEEP},
+    ])))
+
+    resp = await async_client.instance(INSTANCE_ID).read(
+        "q", include_related_types=RelatedTypesMode.TYPES, related_types_depth=3,
+    )
+
+    assert b'"related_types_depth":3' in route.calls.last.request.content
+    assert resp.related_types is not None and resp.related_types.depth == 2
+
+
 def test_read_request_omits_related_types_unless_set() -> None:
     from xmemory import RelatedTypesMode
     from xmemory._models import ReadMode, _ReadRequest
@@ -1484,9 +1570,13 @@ def test_read_request_omits_related_types_unless_set() -> None:
     asked = _ReadRequest(query="q", mode=ReadMode.SINGLE_ANSWER, include_related_types=RelatedTypesMode.TYPES).model_dump(
         by_alias=True
     )
+    deep = _ReadRequest(
+        query="q", mode=ReadMode.SINGLE_ANSWER, include_related_types=RelatedTypesMode.TYPES, related_types_depth=2
+    ).model_dump(by_alias=True)
 
-    assert "include_related_types" not in plain
-    assert asked["include_related_types"] == RelatedTypesMode.TYPES
+    assert "include_related_types" not in plain and "related_types_depth" not in plain
+    assert asked["include_related_types"] == RelatedTypesMode.TYPES and "related_types_depth" not in asked
+    assert deep["related_types_depth"] == 2
 
 
 def test_scope_serializes_to_canonical_wire_shape() -> None:

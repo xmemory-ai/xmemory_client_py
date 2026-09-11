@@ -357,7 +357,30 @@ for touched in result.related_types.touched:
 `related_types` is `None` unless the read asked for it. A requested read that
 executed nothing arrives with `touched == []`. The server caps the payload;
 `truncated` says when it did, and `omitted_touched` and each entry's
-`omitted_related` count what was dropped. Asking for it needs the
+`omitted_related` count what was dropped.
+
+To follow the relations further, add `related_types_depth=2` (up to 3). Every
+entry under `related_types.objects` then carries its `distance` from the touched
+types (0 for a touched type) and, between the touched types and the last level,
+its own `related` edges, so the walk can be continued from the catalog:
+
+```python
+result = inst.read(
+    "Which courses require an English test?",
+    include_related_types=RelatedTypesMode.TYPES,
+    related_types_depth=2,
+)
+for name, entry in result.related_types.objects.items():
+    print(name, "at distance", entry.distance)
+    for link in entry.related:
+        print("  linked to", link.object_type, "via", link.relation)
+```
+
+`related_types.depth` echoes the levels served: the depth asked for, or fewer when
+the server's byte budget dropped the deepest level, in which case `truncated` is
+set and `omitted_objects` counts the types that level held. Left unset, nothing is
+sent and the server serves one level; a value outside 1 to 3 is a 422 whose
+`code` is `VALIDATION_ERROR`. Asking for related types needs the
 `instance.get_own` permission on the API key, the same one the schema
 endpoints need, on top of `data.read`: a key without it gets a 403 whose
 message names the permission, and the plain read is unaffected.

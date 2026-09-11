@@ -90,6 +90,7 @@ class InstanceAPI:
         read_mode: ReadMode = ReadMode.SINGLE_ANSWER,
         scope: ReadScope | None = None,
         include_related_types: RelatedTypesMode | None = None,
+        related_types_depth: int | None = None,
         read_id: str | None = None,
         timeout: float | None = None,
     ) -> ReadResult:
@@ -111,12 +112,21 @@ class InstanceAPI:
         :attr:`ReadResult.related_types`: the object types the read touched, the
         fields it did not return, and the object types a declared relation links
         them to, so a follow-up read can be deliberate. Needs ``instance.get_own``
-        on the API key; see :class:`RelatedTypesMode`.
+        on the API key; see :class:`RelatedTypesMode`. ``related_types_depth``
+        (1 to 3; the server serves one level when it is unset) follows the
+        relations further: every catalog entry then carries its ``distance``
+        from the touched types and, below the last level, its own ``related``
+        edges; see :class:`RelatedTypes`.
         """
         return self._t.request_one(
             "POST", f"/instances/{self._id}/read", ReadResult,
             body=_ReadRequest(
-                query=query, mode=read_mode, scope=scope, read_id=read_id, include_related_types=include_related_types
+                query=query,
+                mode=read_mode,
+                scope=scope,
+                read_id=read_id,
+                include_related_types=include_related_types,
+                related_types_depth=related_types_depth,
             ),
             timeout=timeout,
         )
@@ -355,6 +365,7 @@ class AsyncInstanceAPI:
         read_mode: ReadMode = ReadMode.SINGLE_ANSWER,
         scope: ReadScope | None = None,
         include_related_types: RelatedTypesMode | None = None,
+        related_types_depth: int | None = None,
         read_id: str | None = None,
         timeout: float | None = None,
     ) -> ReadResult:
@@ -376,12 +387,21 @@ class AsyncInstanceAPI:
         :attr:`ReadResult.related_types`: the object types the read touched, the
         fields it did not return, and the object types a declared relation links
         them to, so a follow-up read can be deliberate. Needs ``instance.get_own``
-        on the API key; see :class:`RelatedTypesMode`.
+        on the API key; see :class:`RelatedTypesMode`. ``related_types_depth``
+        (1 to 3; the server serves one level when it is unset) follows the
+        relations further: every catalog entry then carries its ``distance``
+        from the touched types and, below the last level, its own ``related``
+        edges; see :class:`RelatedTypes`.
         """
         return await self._t.request_one(
             "POST", f"/instances/{self._id}/read", ReadResult,
             body=_ReadRequest(
-                query=query, mode=read_mode, scope=scope, read_id=read_id, include_related_types=include_related_types
+                query=query,
+                mode=read_mode,
+                scope=scope,
+                read_id=read_id,
+                include_related_types=include_related_types,
+                related_types_depth=related_types_depth,
             ),
             timeout=timeout,
         )
