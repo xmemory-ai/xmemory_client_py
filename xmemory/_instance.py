@@ -156,15 +156,23 @@ class InstanceAPI:
         ``extraction_logic`` and ``diff_engine`` only affect the ``text`` path.
 
         Pass ``scope`` — a `WriteScope` of concrete existing objects, each named
-        by its user-defined primary key — to anchor a text write to them. Their
-        current values are shown to the extractor so the write updates them
-        instead of creating duplicates, and the write is then confined to the
-        scope: it may only modify or delete the scoped objects and create new
-        objects and relations anchored to them. A write that would touch any
-        other existing object fails. Scope applies to text writes only, the
-        server accepts it with fast extraction only, and it additionally
-        requires read permission on the instance, because the scoped objects'
-        values are shown to the extractor.
+        by its user-defined primary key — to anchor a text write to them. The
+        write is then confined to the scope: it may only modify or delete the
+        scoped objects and create new objects and relations anchored to them.
+        Extraction is unchanged by a scope — it runs on the text alone, so the
+        text still names the objects it means. What a change outside that
+        confinement costs is the scope's ``mode``: under ``"reject"`` (the
+        default) a write that would touch any other existing object fails; under
+        ``"drop"`` that change, and any change that depended on it, is left out
+        and reported under ``result.changes["skipped_out_of_scope"]`` while the
+        rest of the write applies, and only records the scope names by primary
+        key may be created — a scoped record need not exist yet, so "create or
+        update exactly this record" is one call. Scope applies to text writes
+        only, and it additionally requires read permission on the instance: the
+        response carries the previous value of every field the write changed,
+        and resolving a scope answers whether each named object is stored. Drop
+        mode runs on the server's diff engine, so a write that also passes
+        ``diff_engine=False`` is refused.
         """
         return self._t.request_one(
             "POST", f"/instances/{self._id}/write", WriteResult,
@@ -185,8 +193,10 @@ class InstanceAPI:
         """Submit a write job and return immediately with a write_id for polling.
 
         Accepts the same ``text`` / ``structured_mutations`` dual input as
-        `write` (exactly one of the two), and the same ``scope``. A scope
-        violation is reported by `write_status` as a failed write.
+        `write` (exactly one of the two), and the same ``scope``. Under the
+        default ``"reject"`` mode a scope violation is reported by `write_status`
+        as a failed write; under ``"drop"`` the write completes and
+        `write_status` carries what it skipped on ``changes``.
         """
         return self._t.request_one(
             "POST", f"/instances/{self._id}/write_async", AsyncWriteResult,
@@ -195,7 +205,12 @@ class InstanceAPI:
         )
 
     def write_status(self, write_id: str, *, timeout: float | None = None) -> WriteStatusResult:
-        """Poll the status of an async write job."""
+        """Poll the status of an async write job.
+
+        Once the write completes, ``changes`` carries the same summary a
+        synchronous `write` returns — including a drop-mode scoped write's
+        ``skipped_out_of_scope``, which no other call can surface for it.
+        """
         return self._t.request_one(
             "POST", f"/instances/{self._id}/write_status", WriteStatusResult,
             body=_WriteStatusRequest(write_id=write_id),
@@ -431,15 +446,23 @@ class AsyncInstanceAPI:
         ``extraction_logic`` and ``diff_engine`` only affect the ``text`` path.
 
         Pass ``scope`` — a `WriteScope` of concrete existing objects, each named
-        by its user-defined primary key — to anchor a text write to them. Their
-        current values are shown to the extractor so the write updates them
-        instead of creating duplicates, and the write is then confined to the
-        scope: it may only modify or delete the scoped objects and create new
-        objects and relations anchored to them. A write that would touch any
-        other existing object fails. Scope applies to text writes only, the
-        server accepts it with fast extraction only, and it additionally
-        requires read permission on the instance, because the scoped objects'
-        values are shown to the extractor.
+        by its user-defined primary key — to anchor a text write to them. The
+        write is then confined to the scope: it may only modify or delete the
+        scoped objects and create new objects and relations anchored to them.
+        Extraction is unchanged by a scope — it runs on the text alone, so the
+        text still names the objects it means. What a change outside that
+        confinement costs is the scope's ``mode``: under ``"reject"`` (the
+        default) a write that would touch any other existing object fails; under
+        ``"drop"`` that change, and any change that depended on it, is left out
+        and reported under ``result.changes["skipped_out_of_scope"]`` while the
+        rest of the write applies, and only records the scope names by primary
+        key may be created — a scoped record need not exist yet, so "create or
+        update exactly this record" is one call. Scope applies to text writes
+        only, and it additionally requires read permission on the instance: the
+        response carries the previous value of every field the write changed,
+        and resolving a scope answers whether each named object is stored. Drop
+        mode runs on the server's diff engine, so a write that also passes
+        ``diff_engine=False`` is refused.
         """
         return await self._t.request_one(
             "POST", f"/instances/{self._id}/write", WriteResult,
@@ -460,8 +483,10 @@ class AsyncInstanceAPI:
         """Submit a write job and return immediately with a write_id for polling.
 
         Accepts the same ``text`` / ``structured_mutations`` dual input as
-        `write` (exactly one of the two), and the same ``scope``. A scope
-        violation is reported by `write_status` as a failed write.
+        `write` (exactly one of the two), and the same ``scope``. Under the
+        default ``"reject"`` mode a scope violation is reported by `write_status`
+        as a failed write; under ``"drop"`` the write completes and
+        `write_status` carries what it skipped on ``changes``.
         """
         return await self._t.request_one(
             "POST", f"/instances/{self._id}/write_async", AsyncWriteResult,
@@ -470,7 +495,12 @@ class AsyncInstanceAPI:
         )
 
     async def write_status(self, write_id: str, *, timeout: float | None = None) -> WriteStatusResult:
-        """Poll the status of an async write job."""
+        """Poll the status of an async write job.
+
+        Once the write completes, ``changes`` carries the same summary a
+        synchronous `write` returns — including a drop-mode scoped write's
+        ``skipped_out_of_scope``, which no other call can surface for it.
+        """
         return await self._t.request_one(
             "POST", f"/instances/{self._id}/write_status", WriteStatusResult,
             body=_WriteStatusRequest(write_id=write_id),

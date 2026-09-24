@@ -818,8 +818,44 @@ def test_instance_write_status(httpx_mock, client):
     resp = client.instance(INSTANCE_ID).write_status("w-1")
 
     assert resp.write_status.value == "completed"
+    # A status served without the summary — an older server, or a write still running.
+    assert resp.changes is None
     assert route.called
     assert b'"write_id":"w-1"' in route.calls.last.request.content
+
+
+def test_write_status_surfaces_changes(httpx_mock, client):
+    """``changes`` rides write_status too, which is the only way an async write reports
+    what it did — and the only way a drop-mode one reports what it skipped."""
+    skipped = [
+        {"operation": "delete", "object_type_name": "Person", "identity": "", "fields": [], "count": 1},
+        {
+            "operation": "update",
+            "object_type_name": "Person",
+            "identity": "name='Alice Johnson'",
+            "fields": ["role", "location"],
+            "count": 1,
+        },
+    ]
+    httpx_mock.post(f"/instances/{INSTANCE_ID}/write_status").mock(
+        return_value=httpx.Response(200, json=_api_ok([
+            {
+                "write_id": "w-1",
+                "write_status": "completed",
+                "changes": {
+                    "created": {"objects": [], "relations": []},
+                    "updated": [{"name": "Person", "identifier": "name='Alice Johnson'", "fields": []}],
+                    "deleted": {"objects": [], "relations": []},
+                    "skipped_out_of_scope": skipped,
+                },
+            },
+        ])),
+    )
+
+    resp = client.instance(INSTANCE_ID).write_status("w-1")
+
+    assert resp.changes["updated"][0]["identifier"] == "name='Alice Johnson'"
+    assert resp.changes["skipped_out_of_scope"] == skipped
 
 
 def test_instance_extract(httpx_mock, client):
@@ -1604,6 +1640,31 @@ def test_scope_serializes_to_canonical_wire_shape() -> None:
     }
 
 
+def test_write_scope_serializes_to_canonical_wire_shape() -> None:
+    """WriteScope emits the same identity shape, plus ``mode`` once it leaves its default."""
+    from xmemory import ScopeObject, WriteScope
+    from xmemory._models import ExtractionLogic, _WriteRequest
+
+    body = _WriteRequest(
+        text="t",
+        extraction_logic=ExtractionLogic.FAST,
+        scope=WriteScope(
+            objects=[ScopeObject(type="Person", key={"name": "Alice"})],
+            mode="drop",
+        ),
+    ).model_dump(by_alias=True)
+    assert body["scope"] == {
+        "objects": [{"type": "Person", "key": {"key": {"name": "Alice"}}}],
+        "mode": "drop",
+    }
+
+
+def test_write_scope_defaults_to_reject() -> None:
+    from xmemory import ScopeObject, WriteScope
+
+    assert WriteScope(objects=[ScopeObject(type="Person", key={"name": "Bob"})]).mode == "reject"
+
+
 def test_scope_defaults_to_no_relations() -> None:
     from xmemory import ReadScope, ScopeObject
 
@@ -1636,6 +1697,8 @@ def test_scoped_write_sends_the_write_scope_wire_shape(httpx_mock, client):
     # WriteScope has no relations_scope: the relations among the scoped objects
     # always accompany the extraction hint.
     assert "relations_scope" not in body["scope"]
+    # And no ``mode``: reject is the default and the behaviour every server has.
+    assert "mode" not in body["scope"]
 
 
 def test_scoped_write_async_sends_the_write_scope_wire_shape(httpx_mock, client):
@@ -1652,6 +1715,90 @@ def test_scoped_write_async_sends_the_write_scope_wire_shape(httpx_mock, client)
     assert body["scope"] == {
         "objects": [{"type": "Person", "key": {"key": {"name": "Alice Johnson"}}}],
     }
+
+
+def test_drop_mode_scope_sends_the_mode(httpx_mock, client):
+    """Drop mode is the one setting that has to reach the server as a key."""
+    route = httpx_mock.post(f"/instances/{INSTANCE_ID}/write").mock(
+        return_value=httpx.Response(200, json=_api_ok([{"write_id": "w-1"}])),
+    )
+
+    client.instance(INSTANCE_ID).write(
+        "Alice Johnson is a surgeon.",
+        scope=WriteScope(
+            objects=[ScopeObject(type="Person", key={"name": "Alice Johnson"})],
+            mode="drop",
+        ),
+    )
+
+    body = json.loads(route.calls.last.request.content)
+    assert body["scope"] == {
+        "objects": [{"type": "Person", "key": {"key": {"name": "Alice Johnson"}}}],
+        "mode": "drop",
+    }
+
+
+def test_drop_mode_scope_sends_the_mode_on_write_async(httpx_mock, client):
+    route = httpx_mock.post(f"/instances/{INSTANCE_ID}/write_async").mock(
+        return_value=httpx.Response(200, json=_api_ok([{"write_id": "w-async-1"}])),
+    )
+
+    client.instance(INSTANCE_ID).write_async(
+        "Alice Johnson is a surgeon.",
+        scope=WriteScope(
+            objects=[ScopeObject(type="Person", key={"name": "Alice Johnson"})],
+            mode="drop",
+        ),
+    )
+
+    assert json.loads(route.calls.last.request.content)["scope"]["mode"] == "drop"
+
+
+def test_reject_mode_scope_omits_the_mode_key(httpx_mock, client):
+    """Spelling the default out must not change the bytes: an older server rejects the key."""
+    route = httpx_mock.post(f"/instances/{INSTANCE_ID}/write").mock(
+        return_value=httpx.Response(200, json=_api_ok([{"write_id": "w-1"}])),
+    )
+
+    client.instance(INSTANCE_ID).write(
+        "Alice Johnson is a surgeon.",
+        scope=WriteScope(
+            objects=[ScopeObject(type="Person", key={"name": "Alice Johnson"})],
+            mode="reject",
+        ),
+    )
+
+    assert b"mode" not in route.calls.last.request.content
+
+
+def test_drop_mode_write_surfaces_the_skip_report(httpx_mock, client):
+    """A drop-mode write reports what it left out instead of failing."""
+    skipped = [
+        {"operation": "update", "object_type_name": "Person", "identity": "", "fields": ["role"], "count": 2},
+    ]
+    httpx_mock.post(f"/instances/{INSTANCE_ID}/write").mock(
+        return_value=httpx.Response(200, json=_api_ok([
+            {
+                "write_id": "w-1",
+                "changes": {
+                    "created": {"objects": [], "relations": []},
+                    "updated": [],
+                    "deleted": {"objects": [], "relations": []},
+                    "skipped_out_of_scope": skipped,
+                },
+            },
+        ])),
+    )
+
+    resp = client.instance(INSTANCE_ID).write(
+        "Alice Johnson is a surgeon and Bob Lee is a director.",
+        scope=WriteScope(
+            objects=[ScopeObject(type="Person", key={"name": "Alice Johnson"})],
+            mode="drop",
+        ),
+    )
+
+    assert resp.changes["skipped_out_of_scope"] == skipped
 
 
 def test_unscoped_write_omits_the_scope_key(httpx_mock, client):

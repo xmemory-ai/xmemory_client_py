@@ -198,6 +198,7 @@ print(result.console_url)  # the same link for the write
 # Write (async job)
 job = inst.write_async("Bob joined the team on Monday as a designer.")
 status = inst.write_status(job.write_id)
+print(status.changes)     # the same summary, once the write completes
 
 # Structured write: deterministic, LLM-free create/update/delete mutations
 # (mutually exclusive with text; applied in list order)
@@ -406,14 +407,46 @@ result = inst.write(
 )
 ```
 
-This does two things at once. The scoped objects' **current values** are shown
-to the extractor, so the new information is folded into them instead of
-producing a near-duplicate record. And the write is then **confined** to the
-scope: it may only modify or delete the scoped objects, and create new objects
-and relations anchored to them. A write that would touch any other existing
-object fails with a validation error rather than applying partially — that
+The write is **confined** to the scope: it may only modify or delete the scoped
+objects, and create new objects and relations anchored to them. That
 confinement is checked against the resulting plan, so it holds regardless of
-what the extractor produced.
+what the extractor produced. Extraction itself is unchanged by a scope — it
+runs on the text alone, so the text still names the objects it means.
+
+What a change outside the confinement costs is the scope's `mode`. The default,
+`"reject"`, fails the whole write with a validation error rather than applying
+partially. Pass `mode="drop"` and such a change — and any change that depended
+on one — is **skipped and reported** instead, while the rest of the write
+applies:
+
+```python
+result = inst.write(
+    "Alice Johnson is now a surgeon, and Bob Lee moved to Seattle.",
+    scope=WriteScope(
+        objects=[ScopeObject(type="Person", key={"name": "Alice Johnson"})],
+        mode="drop",
+    ),
+)
+for skipped in result.changes.get("skipped_out_of_scope", []):
+    print(skipped["operation"], skipped["object_type_name"], skipped["fields"], skipped["count"])
+```
+
+A drop-mode write applies the plan it would have run unscoped **minus** those
+changes; it never adds one or re-targets one at a scoped record. Each entry in
+`skipped_out_of_scope` carries the `operation` (`create`, `update`, `delete`,
+`merge`, `link` or `unlink`), the `object_type_name`, the `fields` the skipped
+changes would have written and a `count` of the records it stands for.
+`identity` names the record (`field='value'`) only when the scope itself named
+it, and is empty otherwise, so the report says that matching records exist
+without naming records the caller had not already asked about. The key is
+omitted entirely when nothing was skipped.
+
+Drop mode also changes what a scope entry means for **creates**. It creates only
+records whose primary key the scope names — and such a record need not be stored
+yet, where a reject-mode scope requires every scoped record to exist. That is
+what makes "create or update exactly this record, and nothing else" one call. A
+type declared without a primary key has nothing to name its records by, so drop
+mode never creates one.
 
 `WriteScope` takes the same `ScopeObject`s as `ReadScope`, identified the same
 way. Unlike `ReadScope` there is no `relations_scope`: the relations among the
@@ -427,14 +460,23 @@ Things to know before reaching for it:
 - Only objects of a type with a **user-defined primary key** can be scoped. A
   scope names records by that key, so a type declared `primary_key: []` has
   nothing to name its records by.
-- The server currently accepts a scope with **fast extraction only**, and caps
-  the number of scoped objects per write. Both are server-side rules, so they
-  surface as an `XmemoryAPIError`.
-- A scoped write additionally requires **read** permission on the instance,
-  because the scoped objects' current values are shown to the extractor. An API
-  key with write access alone is refused.
-- `write_async` accepts the same `scope`; a scope violation surfaces through
-  `write_status` as a failed write.
+- The server caps the number of scoped objects per write, and can have scoped
+  writes disabled entirely. Both are server-side rules, so they surface as an
+  `XmemoryAPIError`.
+- A scoped write additionally requires **read** permission on the instance: the
+  response carries the previous value of every field the write changed,
+  resolving a scope answers whether each named object is stored, and a
+  drop-mode report says what the skipped changes would have written. An API key
+  with write access alone is refused.
+- `mode="drop"` runs on the server's **diff engine**: passing it together with
+  `diff_engine=False` is refused with an `XmemoryAPIError`. Leave `diff_engine`
+  alone unless you have a reason not to.
+- A server that predates `mode` never sees the key: it is sent only when it is
+  not `"reject"`, so an unscoped or reject-mode write is byte-identical to what
+  this client sent before the option existed.
+- `write_async` accepts the same `scope`. Under `"reject"` a scope violation
+  surfaces through `write_status` as a failed write; under `"drop"` the write
+  completes and `write_status().changes` carries what it skipped.
 
 #### Extraction logic
 

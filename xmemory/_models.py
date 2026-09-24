@@ -345,7 +345,10 @@ class WriteResult(BaseModel):
     write_id: str
     trace_id: str | None = None
     console_url: str | None = None
-    # What the write did, grouped into ``created`` / ``updated`` / ``deleted``.
+    # What the write did, grouped into ``created`` / ``updated`` / ``deleted``, plus
+    # ``skipped_out_of_scope`` on a drop-mode scoped write — what it left out, one entry per
+    # operation, object type, identity and set of fields, with a ``count`` of the records it
+    # stands for; omitted when nothing was skipped.
     # Absent (``None``) on responses from an older server.
     changes: Any = None
 
@@ -364,6 +367,11 @@ class WriteStatusResult(BaseModel):
     console_url: str | None = None
     error_detail: str | None = None
     completed_at: datetime | None = None
+    # The same summary `WriteResult.changes` carries, for the write this id names, once it
+    # completes; empty or absent (`None`) before that and on responses from an older server.
+    # The server has always sent it here — this client dropped it, so the one report only an
+    # async write can produce, a drop-mode write's ``skipped_out_of_scope``, was unreachable.
+    changes: Any = None
 
 
 class ExtractResult(BaseModel):
@@ -656,17 +664,50 @@ class ReadScope(BaseModel):
     relations_scope: Literal["no_relations", "all_relations"] = "no_relations"
 
 
+WriteScopeMode = Literal["reject", "drop"]
+"""What a scoped write does with a change that falls outside its scope.
+
+``"reject"`` (the default, and the only behaviour before this option existed)
+fails the whole write on the first one. ``"drop"`` skips those changes — and any
+change that depended on one — and reports them under
+``WriteResult.changes["skipped_out_of_scope"]`` instead.
+"""
+
+
 class WriteScope(BaseModel):
     """A write's scope: the concrete existing objects the write is anchored to.
 
-    Their current values are shown to the extractor so the write updates them
-    instead of creating duplicates, and the write is then confined to them: it
-    may only modify or delete the scoped objects and create new objects (and
-    relations anchored to the scope). Unlike `ReadScope` there is no relation
-    policy — the relations among the scoped objects always accompany the hint.
+    The write is confined to them: it may only modify or delete the scoped
+    objects and create new objects (and relations anchored to the scope).
+    Extraction is unchanged by a scope — it runs on the text alone, so the text
+    still names the objects it means. Unlike `ReadScope` there is no relation
+    policy — relation changes follow the confinement rule rather than a mode of
+    their own.
+
+    ``mode`` decides what a change outside that confinement costs. ``"reject"``
+    (the default) fails the write; ``"drop"`` leaves those changes out and
+    reports them instead — the write then applies the plan it would have run
+    unscoped minus them, and never adds or re-targets one. Drop mode is also
+    stricter about creates: it creates only records whose primary key the scope
+    names, and such a record need not be stored yet, which is what makes
+    "create or update exactly this record" expressible. A type without a primary
+    key cannot be named, so drop mode never creates one. The server runs drop
+    mode on its diff engine and refuses a write that turns the engine off.
     """
 
     objects: list[ScopeObject]
+    mode: WriteScopeMode = "reject"
+
+    @model_serializer(mode="wrap")
+    def _omit_default_mode(self, handler: Any) -> dict[str, Any]:
+        # Omit the key entirely at its default: a server that predates the option rejects
+        # unknown request fields, so an unscoped or reject-mode write must stay
+        # byte-identical to what this client sent before the option existed. The server
+        # drops it from its own scope the same way, for the same reason.
+        data = handler(self)
+        if self.mode == "reject":
+            data.pop("mode", None)
+        return data
 
 
 class _ReadRequest(BaseModel):
