@@ -5,7 +5,7 @@ import re
 
 # Twin of `[project].version` in pyproject.toml; bump both in one edit (see AGENTS.md).
 # `test_version_matches_pyproject` fails if they drift.
-__version__ = "0.20.0"
+__version__ = "0.21.0"
 
 # The header this library sends its identity in. A dedicated field rather than ``User-Agent``: that one
 # belongs to whoever built the request -- you, httpx, or the platform hosting your code -- and this

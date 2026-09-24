@@ -251,6 +251,49 @@ def test_scoped_write_rejects_an_out_of_scope_target(instance):
         )
 
 
+def test_drop_mode_scoped_write_skips_the_out_of_scope_target(instance):
+    """Drop mode applies the in-scope part and reports the rest instead of failing."""
+    inst, _ = instance
+
+    inst.write(structured_mutations=[
+        {"object_mutation": {"object_type": "person", "create": {
+            "key": {"name": "Alice Johnson"}, "values": {"role": "resident"},
+        }}},
+        {"object_mutation": {"object_type": "person", "create": {
+            "key": {"name": "Bob Lee"}, "values": {"role": "product manager"},
+        }}},
+    ])
+
+    scoped = inst.write(
+        "Alice Johnson is now a surgeon, and Bob Lee is now a director.",
+        scope=WriteScope(
+            objects=[ScopeObject(type="person", key={"name": "Alice Johnson"})],
+            mode="drop",
+        ),
+    )
+
+    assert "surgeon" in str(scoped.changes["updated"])
+    # Bob is outside the scope: left out and reported, not a failed write. His
+    # identity stays out of the report — the scope never named him.
+    skipped = scoped.changes["skipped_out_of_scope"]
+    assert skipped and all("Bob Lee" not in entry.get("identity", "") for entry in skipped)
+
+
+def test_drop_mode_scoped_write_creates_the_record_it_names(instance):
+    """The scope may name a record that is not stored yet, so one call creates or updates it."""
+    inst, _ = instance
+
+    created = inst.write(
+        "Carol Diaz is a radiologist.",
+        scope=WriteScope(
+            objects=[ScopeObject(type="person", key={"name": "Carol Diaz"})],
+            mode="drop",
+        ),
+    )
+
+    assert "Carol Diaz" in str(created.changes["created"])
+
+
 def test_scoped_write_with_deep_extraction_is_refused_by_the_server(instance):
     """The client forwards the combination rather than pre-judging a server-side rule."""
     inst, _ = instance

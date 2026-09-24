@@ -2,6 +2,42 @@
 
 All notable changes to `xmemory-ai` are documented here.
 
+## 0.21.0
+
+A scoped write can now skip what falls outside its scope instead of failing on
+it. Pass `mode="drop"` on the `WriteScope` and a change outside the scope — and
+any change that depended on one — is left out and reported under
+`changes["skipped_out_of_scope"]`, while the rest of the write applies: the plan
+it would have run unscoped, minus those changes, never one it would not have run.
+Drop mode also creates only records whose primary key the scope names, and such
+a record need not be stored yet — where the default `"reject"` mode requires
+every scoped record to exist — so "create or update exactly this record, and
+nothing else" is one call. The default is unchanged and the key is sent only
+when it is not `"reject"`, so an unscoped or reject-mode write stays
+byte-identical for a server that predates the option. Drop mode itself requires
+a server that accepts the field, and the server runs it on its diff engine: a
+write that also passes `diff_engine=False` is refused.
+
+### Added
+
+- `WriteScope.mode` (`"reject"` by default, `"drop"` to skip and report),
+  serialized only when it is not `"reject"`. The `WriteScopeMode` alias is
+  exported alongside `WriteScope`.
+- `WriteStatusResult.changes` — the same opaque summary `WriteResult.changes`
+  carries, which the server has always sent here and this client dropped. It is
+  the only way an async write reports what it did, and the only way a drop-mode
+  one reports what it skipped. `None` on a response that carries no summary: a
+  write that has not completed, or an older server.
+
+### Notes
+
+An entry under `changes["skipped_out_of_scope"]` is `{operation,
+object_type_name, identity, fields, count}`, where `operation` is one of
+`create`, `update`, `delete`, `merge`, `link` or `unlink` and `count` is how many
+records the entry stands for. `identity` renders a primary key (`field='value'`)
+only when the scope itself named that record, and is empty otherwise. The key is
+omitted when nothing was skipped.
+
 ## 0.20.0
 
 A read can follow the relations further than the touched types' own edges. Pass
