@@ -7,6 +7,8 @@ class XmemoryAPIError(Exception):
     """Raised for any failed xmemory API call.
 
     ``status`` is the HTTP status code (when the failure came from the server).
+    A long-running call answers 200 before it finishes, so its error can carry
+    ``status == 200``: branch on ``code``, not on ``status``.
     ``code`` is the structured error code when the server returned one — for
     the schema-evolution endpoints this is the ``error_type`` discriminator
     (e.g. ``"stale_proposal_version"``, ``"dependency_closure_failed"``,

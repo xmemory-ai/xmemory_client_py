@@ -560,15 +560,16 @@ else:
 
     # 2. Decide — accept / reject / defer per item, in one batch. Leave out
     #    items flagged apply_blocked: accepting one fails the whole apply.
-    decided = inst.decide_suggestions(
-        proposal.proposal_version,
-        [DecisionInput(item_fingerprint=item.item_fingerprint, decision="accept")
-         for item in proposal.items if not item.apply_blocked],
-    )
+    decisions = [
+        DecisionInput(item_fingerprint=item.item_fingerprint, decision="accept")
+        for item in proposal.items if not item.apply_blocked
+    ]
+    if decisions:
+        decided = inst.decide_suggestions(proposal.proposal_version, decisions)
 
-    # 3. Apply — commit accepted decisions as one migration.
-    applied = inst.apply_pending_decisions(decided.next_proposal_version)
-    print(applied.status, applied.summary)  # e.g. "ok" "added 1 field"
+        # 3. Apply — commit accepted decisions as one migration.
+        applied = inst.apply_pending_decisions(decided.next_proposal_version)
+        print(applied.status, applied.summary)  # e.g. "ok" "added 1 field"
 ```
 
 `review_suggestions()` returns a `ReviewSuggestionsResult`. When
@@ -579,6 +580,8 @@ An item with `apply_blocked == True` cannot be applied as proposed — for
 example a field that another item in the same proposal already adds as part of
 a new object — and its `rationale` says why. Accepting it fails the whole
 apply, so a bulk accept should skip it; the remaining items apply together.
+When every item is flagged there is nothing to accept: skip the decide call,
+which refuses an empty batch with `invalid_decision_input`.
 
 ### Direct migration flow (enhance → dry-run → update)
 

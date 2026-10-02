@@ -1,6 +1,7 @@
 """Unit tests for the schema-evolution surface (admin + instance methods)."""
 from __future__ import annotations
 
+import json
 import uuid
 
 import httpx
@@ -10,6 +11,7 @@ import respx
 from xmemory import (
     AddField,
     ApplyPendingDecisionsResult,
+    AsyncXmemoryClient,
     ChangeField,
     ConsolidatedProposal,
     DecideSuggestionsResult,
@@ -435,6 +437,36 @@ def test_stale_proposal_version_surfaces_code(httpx_mock, client):
         client.instance(INSTANCE_ID).apply_pending_decisions("old-token")
     assert exc.value.code == "stale_proposal_version"
     assert exc.value.status == 409
+    assert exc.value.details == {"current": "xyz"}
+
+
+def _schema_error_on_a_200(error_type: str, details: dict) -> httpx.Response:
+    """A long-running call: 200 first, padding while it runs, then the error payload."""
+    body = {"status": "error", "error_type": error_type, "error_message": "Re-review.", "details": details}
+    return httpx.Response(200, content=b"   " + json.dumps(body).encode())
+
+
+def test_schema_error_on_a_200_keeps_its_code(httpx_mock, client):
+    httpx_mock.post(f"/instances/{INSTANCE_ID}/suggestions/apply").mock(
+        return_value=_schema_error_on_a_200("apply_failed", {"detached_accept_fingerprints": ["fp1"]})
+    )
+    with pytest.raises(XmemoryAPIError) as exc:
+        client.instance(INSTANCE_ID).apply_pending_decisions("tok-1")
+    assert exc.value.code == "apply_failed"
+    assert exc.value.details == {"detached_accept_fingerprints": ["fp1"]}
+    assert exc.value.status == 200
+
+
+async def test_schema_error_on_a_200_keeps_its_code_async(httpx_mock, base_url):
+    httpx_mock.post(f"/instances/{INSTANCE_ID}/suggestions/decide").mock(
+        return_value=_schema_error_on_a_200("stale_proposal_version", {"current": "xyz"})
+    )
+    async with AsyncXmemoryClient(url=base_url, api_key="test-api-key") as async_client:
+        with pytest.raises(XmemoryAPIError) as exc:
+            await async_client.instance(INSTANCE_ID).decide_suggestions(
+                "abc123", [DecisionInput(item_fingerprint="fp1", decision="accept")]
+            )
+    assert exc.value.code == "stale_proposal_version"
     assert exc.value.details == {"current": "xyz"}
 
 

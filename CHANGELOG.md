@@ -4,30 +4,35 @@ All notable changes to `xmemory-ai` are documented here.
 
 ## 0.22.0
 
-Surfaces which suggestions can be applied together, a flag the API sends on every
-proposal item and this client dropped.
+Says which suggestions can be applied together, and keeps the structured code on
+every schema-evolution error.
 
 ### Added
 
-- `ProposalItem.apply_blocked` — `True` when the change cannot be applied as
-  proposed, for example a field that another item in the same proposal already adds
-  as part of a new object. Accepting such an item fails the whole apply, and
-  `rationale` says why; the items not flagged apply together. `False` on a response
-  that carries no flag, so a server that predates it reads every item as appliable,
-  as before.
+- `ProposalItem.apply_blocked` — the review endpoint marks each proposal item that
+  cannot be applied as proposed, for example a field that another item in the same
+  proposal already adds as part of a new object. Accepting such an item fails the
+  whole apply, and `rationale` says why; the items not flagged apply together.
+  `False` on a response that carries no flag, so an item from a server that
+  predates it reads as not flagged.
 
 ### Changed
 
 - The README's suggestion-engine flow and `examples/suggestion_engine_flow.py` leave
   blocked items out of the bulk accept.
 
+### Fixed
+
+- A schema-evolution error that arrives on a 2xx response now raises with its
+  `code` and `details`. A long-running review, decide or apply call answers 200
+  before it finishes, so its error payload can follow a 200; it raised
+  `"… returned no items"` with no `code`, which a caller retrying on
+  `stale_proposal_version` could not match.
+
 ### Notes
 
-Without the flag, a caller that accepts every item in bulk had no way to tell a
-blocked item from the rest short of reading `rationale`, which is prose, and retrying
-the apply could not succeed while the blocked item stayed accepted. The flag is
-re-derived on every review, so read it from the latest `review_suggestions()` rather
-than caching it across reviews.
+The flag is re-derived on every review, so read it from the latest
+`review_suggestions()` rather than caching it across reviews.
 
 ## 0.21.0
 
