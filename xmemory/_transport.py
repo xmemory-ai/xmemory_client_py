@@ -42,6 +42,29 @@ def _structured_error(payload: Any) -> tuple[str | None, str | None, dict[str, A
     return None, None, None
 
 
+def _raise_if_schema_error(payload: Any, resp: httpx.Response, path: str) -> None:
+    """Raise the schema-evolution error a 2xx body carries, if it carries one.
+
+    The schema-evolution endpoints answer an error as a bare
+    ``{"status": "error", "error_type", ...}`` payload. A long-running call
+    answers 200 before it finishes, so that payload can arrive on a 2xx
+    response; it is raised here with its ``code`` and ``details``, exactly as
+    on a non-2xx one.
+    """
+    if not (
+        isinstance(payload, dict) and payload.get("status") == "error" and isinstance(payload.get("error_type"), str)
+    ):
+        return
+    code, message, details = _structured_error(payload)
+    raise XmemoryAPIError(
+        path + " failed: " + (message or str(code)),
+        status=resp.status_code,
+        code=code,
+        details=details,
+        retry_after=_retry_after_seconds(resp),
+    )
+
+
 def _retry_after_seconds(resp: httpx.Response) -> int | None:
     """Parse the integer ``Retry-After`` response header (seconds), if present.
 
@@ -116,6 +139,7 @@ class SyncTransport:
 
     def _parse(self, resp: httpx.Response, path: str) -> _RawApiResponse:
         payload = resp.json() if resp.text else {}
+        _raise_if_schema_error(payload, resp, path)
         parsed = _RawApiResponse.model_validate(payload)
         if parsed.errors:
             err = parsed.errors[0]
@@ -220,6 +244,7 @@ class AsyncTransport:
 
     def _parse(self, resp: httpx.Response, path: str) -> _RawApiResponse:
         payload = resp.json() if resp.text else {}
+        _raise_if_schema_error(payload, resp, path)
         parsed = _RawApiResponse.model_validate(payload)
         if parsed.errors:
             err = parsed.errors[0]
