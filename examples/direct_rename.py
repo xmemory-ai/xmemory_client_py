@@ -4,10 +4,10 @@ Drives a rename yourself instead of going through the suggestion engine. The
 server emits a structured migration plan; you preview the DDL, then apply it.
 A rename preserves data (unlike remove + add, which would drop the column).
 
-Run against a staging instance:
+Run against a test instance:
 
     export XMEM_API_KEY=xmem_...
-    export XMEM_API_URL=https://api.stg.xmemory.ai   # optional; defaults to prod
+    export XMEM_API_URL=<api-url>   # optional; defaults to https://api.xmemory.ai
     export XMEM_CLUSTER_ID=<cluster-id>
     export XMEM_INSTANCE_ID=<instance-id>
     python examples/direct_rename.py
