@@ -315,6 +315,49 @@ def test_review_suggestions(httpx_mock, client):
     # Forward-compat: op stays a dict, parseable on demand.
     parsed = parse_migration_op(result.proposal.items[0].op)
     assert isinstance(parsed, AddField)
+    # A server that predates apply_blocked sends no flag; the item reads as appliable.
+    assert result.proposal.items[0].apply_blocked is False
+
+
+def test_review_suggestions_carries_apply_blocked(httpx_mock, client):
+    blocked_rationale = (
+        "cannot be applied: phone is already part of the proposed object Contact — "
+        "accepting both fails the whole apply, and accepting the object alone already adds it"
+    )
+    proposal = {
+        "instance_id": INSTANCE_ID,
+        "proposal_version": "abc123",
+        "schema_version": 4,
+        "items": [
+            {
+                "item_fingerprint": "fp-object",
+                "op": {"op_type": "add_object", "name": "Contact", "description": "A contact."},
+                "rationale": "queried but missing",
+                "apply_blocked": False,
+            },
+            {
+                "item_fingerprint": "fp-field",
+                "op": {"op_type": "add_field", "object_name": "Contact", "field_name": "phone", "field_type": "str"},
+                "rationale": blocked_rationale,
+                "apply_blocked": True,
+            },
+        ],
+        "generated_at": "2026-06-01T12:00:00Z",
+        "notes": [],
+    }
+    httpx_mock.post(f"/instances/{INSTANCE_ID}/suggestions/review").mock(
+        return_value=httpx.Response(
+            200, json=_api_ok([{"status": "ok", "instance_id": INSTANCE_ID, "proposal": proposal, "retry_after_seconds": None}])
+        )
+    )
+    result = client.instance(INSTANCE_ID).review_suggestions()
+    assert result.proposal is not None
+    by_fingerprint = {item.item_fingerprint: item for item in result.proposal.items}
+    assert by_fingerprint["fp-object"].apply_blocked is False
+    assert by_fingerprint["fp-field"].apply_blocked is True
+    assert by_fingerprint["fp-field"].rationale == blocked_rationale
+    appliable = [item.item_fingerprint for item in result.proposal.items if not item.apply_blocked]
+    assert appliable == ["fp-object"]
 
 
 def test_decide_suggestions_sends_decisions(httpx_mock, client):

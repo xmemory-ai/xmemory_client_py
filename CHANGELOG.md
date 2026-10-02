@@ -2,6 +2,33 @@
 
 All notable changes to `xmemory-ai` are documented here.
 
+## 0.22.0
+
+Surfaces which suggestions can be applied together, a flag the API sends on every
+proposal item and this client dropped.
+
+### Added
+
+- `ProposalItem.apply_blocked` — `True` when the change cannot be applied as
+  proposed, for example a field that another item in the same proposal already adds
+  as part of a new object. Accepting such an item fails the whole apply, and
+  `rationale` says why; the items not flagged apply together. `False` on a response
+  that carries no flag, so a server that predates it reads every item as appliable,
+  as before.
+
+### Changed
+
+- The README's suggestion-engine flow and `examples/suggestion_engine_flow.py` leave
+  blocked items out of the bulk accept.
+
+### Notes
+
+Without the flag, a caller that accepts every item in bulk had no way to tell a
+blocked item from the rest short of reading `rationale`, which is prose, and retrying
+the apply could not succeed while the blocked item stayed accepted. The flag is
+re-derived on every review, so read it from the latest `review_suggestions()` rather
+than caching it across reviews.
+
 ## 0.21.0
 
 A scoped write can now skip what falls outside its scope instead of failing on
