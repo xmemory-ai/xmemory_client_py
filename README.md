@@ -558,11 +558,12 @@ else:
     for item in proposal.items:
         print(item.item_fingerprint, item.rationale, item.op)
 
-    # 2. Decide — accept / reject / defer per item, in one batch.
+    # 2. Decide — accept / reject / defer per item, in one batch. Leave out
+    #    items flagged apply_blocked: accepting one fails the whole apply.
     decided = inst.decide_suggestions(
         proposal.proposal_version,
         [DecisionInput(item_fingerprint=item.item_fingerprint, decision="accept")
-         for item in proposal.items],
+         for item in proposal.items if not item.apply_blocked],
     )
 
     # 3. Apply — commit accepted decisions as one migration.
@@ -573,6 +574,11 @@ else:
 `review_suggestions()` returns a `ReviewSuggestionsResult`. When
 `status == "evolution_in_progress"`, back off for `retry_after_seconds` and
 retry instead of blocking.
+
+An item with `apply_blocked == True` cannot be applied as proposed — for
+example a field that another item in the same proposal already adds as part of
+a new object — and its `rationale` says why. Accepting it fails the whole
+apply, so a bulk accept should skip it; the remaining items apply together.
 
 ### Direct migration flow (enhance → dry-run → update)
 

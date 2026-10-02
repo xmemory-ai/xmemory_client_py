@@ -43,16 +43,22 @@ def main() -> None:
 
     print(f"Proposal {proposal.proposal_version} (schema v{proposal.schema_version}):")
     for item in proposal.items:
-        print(f"  - [{item.item_fingerprint}] {item.rationale}")
+        blocked = " (cannot be applied as proposed)" if item.apply_blocked else ""
+        print(f"  - [{item.item_fingerprint}]{blocked} {item.rationale}")
         print(f"      op: {item.op}")
         if item.evidence_query_samples:
             print(f"      seen in: {item.evidence_query_samples[:2]}")
 
-    # 2. Decide — accept everything here; in practice you'd choose per item.
+    # 2. Decide — accept everything that can be applied; in practice you'd
+    #    choose per item. An apply_blocked item would fail the whole apply.
     decisions = [
         DecisionInput(item_fingerprint=item.item_fingerprint, decision="accept")
         for item in proposal.items
+        if not item.apply_blocked
     ]
+    if not decisions:
+        print("Every suggestion is blocked; nothing to accept.")
+        return
     decided = inst.decide_suggestions(proposal.proposal_version, decisions)
     for warning in decided.warnings:
         print(f"  dependency warning: {warning.kind} — {warning.guidance}")
