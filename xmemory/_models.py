@@ -348,7 +348,13 @@ class WriteResult(BaseModel):
     # What the write did, grouped into ``created`` / ``updated`` / ``deleted``, plus
     # ``skipped_out_of_scope`` on a drop-mode scoped write — what it left out, one entry per
     # operation, object type, identity and set of fields, with a ``count`` of the records it
-    # stands for; omitted when nothing was skipped.
+    # stands for; omitted when nothing was skipped. It holds at most 100 entries: past that,
+    # entries are kept as they are while there is room, those that name a record first, and the
+    # rest arrive folded, one entry per operation and object type marked ``folded: True`` with an
+    # empty ``identity``, no ``fields`` and the summed ``count`` (or, when even those would be more
+    # than 100, none is kept as it was and the last of them are folded once more per operation,
+    # with an empty ``object_type_name`` too), so summing ``count`` per operation still gives the
+    # totals. A record the scope named can end up folded. Only a folded entry has the ``folded`` key.
     # Absent (``None``) on responses from an older server.
     changes: Any = None
 

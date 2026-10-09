@@ -441,6 +441,17 @@ it, and is empty otherwise, so the report says that matching records exist
 without naming records the caller had not already asked about. The key is
 omitted entirely when nothing was skipped.
 
+The report holds at most 100 entries. Past that, entries are kept as they are
+while there is room, those that name a record first, and the rest arrive folded:
+one entry per `operation` and `object_type_name`, marked `"folded": True`, with
+an empty `identity`, no `fields` and the summed `count`. When even those would be
+more than 100, none is kept as it was, and the last folded entries are folded
+once more, into one entry per `operation` whose `object_type_name` is empty too.
+Unnamed entries are folded before named ones, but a record the scope named can
+still end up inside a folded entry. Summing `count` per `operation` still gives
+the true totals, and only a folded entry has the `folded` key, so read it with
+`skipped.get("folded", False)`.
+
 Drop mode also changes what a scope entry means for **creates**. It creates only
 records whose primary key the scope names — and such a record need not be stored
 yet, where a reject-mode scope requires every scoped record to exist. That is
