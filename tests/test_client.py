@@ -550,6 +550,46 @@ def test_instance_read_keeps_a_refusal_as_none(httpx_mock, client):
     assert b'"mode":"raw-tables"' in route.calls.last.request.content
 
 
+def test_instance_read_keeps_the_notice_at_the_top_level_and_on_its_part(httpx_mock, client):
+    """A read the server could not answer as asked carries the same empty value as a no-match, told apart
+    by ``notice`` alone -- at the top level, even when a sibling answered, and on the part it applies to."""
+    notice = "This question could not be answered as asked."
+    httpx_mock.post(f"/instances/{INSTANCE_ID}/read").mock(return_value=httpx.Response(200, json=_api_ok([
+        {
+            "trace_id": "r-1",
+            "reader_result": {"columns": [{"name": "name", "type": "text"}], "rows": [["Ada"]]},
+            "notice": notice,
+            "reader_results": [
+                {"sub_query": "Who works here?", "reader_result": {"columns": [], "rows": [["Ada"]]}, "error": None},
+                {
+                    "sub_query": "Whose name contains Najm?",
+                    "reader_result": {"columns": [], "rows": []},
+                    "error": None,
+                    "notice": notice,
+                },
+            ],
+        },
+    ])))
+
+    resp = client.instance(INSTANCE_ID).read("Who works here, and whose name contains Najm?", read_mode=ReadMode.RAW_TABLES)
+
+    assert resp.notice == notice
+    assert [part.notice for part in resp.reader_results] == [None, notice]
+    assert resp.reader_results[1].reader_result == {"columns": [], "rows": []}
+    assert resp.reader_results[1].error is None
+
+
+def test_instance_read_without_a_notice_reads_as_none(httpx_mock, client):
+    """The server omits ``notice`` on every other read, and an older server never sends it."""
+    httpx_mock.post(f"/instances/{INSTANCE_ID}/read").mock(return_value=httpx.Response(200, json=_api_ok([
+        {"trace_id": "r-1", "reader_result": {"columns": [], "rows": []}},
+    ])))
+
+    resp = client.instance(INSTANCE_ID).read("Which invoices are overdue?", read_mode=ReadMode.RAW_TABLES)
+
+    assert resp.notice is None
+
+
 def test_instance_read_keeps_an_empty_result(httpx_mock, client):
     """A read that matched nothing is exactly the empty result -- the shape one
     emptiness check works against, at the top level as under ``reader_results``."""
