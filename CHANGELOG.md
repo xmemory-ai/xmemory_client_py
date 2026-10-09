@@ -2,6 +2,20 @@
 
 All notable changes to `xmemory-ai` are documented here.
 
+## 0.23.0
+
+Tells a read the server could not answer as asked apart from one that matched
+nothing.
+
+### Added
+
+- `ReadResult.notice` and `TaggedReaderResult.notice` — set when the server could
+  not run a query that answers the question as asked, so the empty result beside
+  it does not mean nothing is stored; rephrase the question instead of treating
+  the data as absent. On a composite read the top level carries it when any
+  sub-query was affected, and that sub-query carries it too. `None` on every
+  other read, and on a response from a server that predates it.
+
 ## 0.22.0
 
 Says which suggestions can be applied together, and keeps the structured code on

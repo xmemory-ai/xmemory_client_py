@@ -179,11 +179,16 @@ class TaggedReaderResult(BaseModel):
     ``xresponse`` mode a read where every sub-query failed does not return at
     all: it raises :class:`XmemoryAPIError` with ``status`` 422 and ``code``
     ``"INVALID_INPUT"``.
+
+    ``notice`` is set when this sub-query could not be answered as asked (see
+    :attr:`ReadResult.notice`); its empty ``reader_result`` is then not a
+    no-match. ``None`` otherwise.
     """
 
     sub_query: str
     reader_result: Any = None
     error: str | None = None
+    notice: str | None = None
 
 
 # Every result below carries ``console_url``: the deep link to that operation's trace in
@@ -304,14 +309,19 @@ class ReadResult(BaseModel):
     """What a read answered.
 
     In ``single-answer`` mode ``reader_result`` is always the prose answer, never
-    ``None``. In ``raw-tables`` / ``xresponse`` mode its value says which of four
+    ``None``. In ``raw-tables`` / ``xresponse`` mode its value says which of five
     answers the read gave:
 
     - rows: answered;
     - exactly ``{"columns": [], "rows": []}`` (``raw-tables``) or
-      ``{"objects": [], "relations": []}`` (``xresponse``): the query executed and
-      matched nothing -- every table and column it used exists, so the data is
-      absent;
+      ``{"objects": [], "relations": []}`` (``xresponse``) with ``notice`` unset:
+      the query executed and matched nothing -- every table and column it used
+      exists, so the data is absent;
+    - the same empty value with ``notice`` set: the server could not run a query
+      that answers the question as asked, so the empty value says nothing about
+      what is stored. Rephrase the question (for example, name the exact value to
+      look up) rather than treating the data as absent. In ``single-answer`` mode
+      the answer is then the notice text itself;
     - ``None``: the schema provably cannot represent the concept. An answer in its
       own right, not a variant of the empty one: this memory cannot hold it, so a
       better-matching instance is worth trying;
@@ -321,8 +331,10 @@ class ReadResult(BaseModel):
 
     For a composite query ``reader_result`` is the combined answer, folded from
     the parts: rows if any sub-query answered; else the empty result if any
-    executed and matched nothing; else ``None``. ``reader_results`` carries each
-    part's own answer.
+    executed and matched nothing, or could not be answered as asked; else
+    ``None``. ``reader_results`` carries each part's own answer. ``notice`` is set
+    at the top level when any part could not be answered as asked, even when
+    another part answered, and that part carries it too.
     """
 
     trace_id: str | None = None
@@ -339,6 +351,10 @@ class ReadResult(BaseModel):
     # it, so ``None`` means "not asked for" -- a requested read that executed nothing arrives
     # with ``touched == []`` instead.
     related_types: RelatedTypes | None = None
+    # Set when the read, or one of its sub-queries, could not be answered as asked; ``None``
+    # otherwise. The server omits the key on every other read, and a server that predates it never
+    # sends it, so ``None`` reads exactly as before.
+    notice: str | None = None
 
 
 class WriteResult(BaseModel):
