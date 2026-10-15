@@ -2,6 +2,21 @@
 
 All notable changes to `xmemory-ai` are documented here.
 
+## 0.22.1
+
+Documentation-only release: describes the order in which writes are applied. No
+API or behavior change.
+
+### Changed
+
+- The README gains a "Write ordering" section, and the `write` / `write_async`
+  docstrings (sync and async clients) say the same: every write to an instance
+  — `write` and `write_async`, text and `structured_mutations` — joins one
+  queue. Queued writes are processed in parallel but applied one at a time, in
+  the order they were queued, so a sync `write` never jumps ahead of an async
+  write queued before it. The order is the order the server receives the
+  writes.
+
 ## 0.22.0
 
 Says which suggestions can be applied together, and keeps the structured code on

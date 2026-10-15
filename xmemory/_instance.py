@@ -173,6 +173,11 @@ class InstanceAPI:
         and resolving a scope answers whether each named object is stored. Drop
         mode runs on the server's diff engine, so a write that also passes
         ``diff_engine=False`` is refused.
+
+        Every write joins the instance's write queue, text and structured alike,
+        and `write_async` writes too. Queued writes are processed in parallel but
+        applied one at a time, in the order they were queued; this call returns
+        once its own write is applied, after every write queued before it.
         """
         return self._t.request_one(
             "POST", f"/instances/{self._id}/write", WriteResult,
@@ -197,6 +202,12 @@ class InstanceAPI:
         default ``"reject"`` mode a scope violation is reported by `write_status`
         as a failed write; under ``"drop"`` the write completes and
         `write_status` carries what it skipped on ``changes``.
+
+        Returns once the write is queued. Writes to an instance — sync and async,
+        text and structured — share one queue: they are processed in parallel
+        but applied one at a time, in the order they were queued. The order is
+        the order the server receives them, so wait for this call to return
+        before sending a write that must apply after it.
         """
         return self._t.request_one(
             "POST", f"/instances/{self._id}/write_async", AsyncWriteResult,
@@ -463,6 +474,11 @@ class AsyncInstanceAPI:
         and resolving a scope answers whether each named object is stored. Drop
         mode runs on the server's diff engine, so a write that also passes
         ``diff_engine=False`` is refused.
+
+        Every write joins the instance's write queue, text and structured alike,
+        and `write_async` writes too. Queued writes are processed in parallel but
+        applied one at a time, in the order they were queued; this call returns
+        once its own write is applied, after every write queued before it.
         """
         return await self._t.request_one(
             "POST", f"/instances/{self._id}/write", WriteResult,
@@ -487,6 +503,12 @@ class AsyncInstanceAPI:
         default ``"reject"`` mode a scope violation is reported by `write_status`
         as a failed write; under ``"drop"`` the write completes and
         `write_status` carries what it skipped on ``changes``.
+
+        Returns once the write is queued. Writes to an instance — sync and async,
+        text and structured — share one queue: they are processed in parallel
+        but applied one at a time, in the order they were queued. The order is
+        the order the server receives them, so wait for this call to return
+        before sending a write that must apply after it.
         """
         return await self._t.request_one(
             "POST", f"/instances/{self._id}/write_async", AsyncWriteResult,
