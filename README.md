@@ -235,6 +235,35 @@ the library's own words. Those labels state provenance; they are not a security
 boundary. If you inject this into a system prompt you are still handling text you
 do not control.
 
+#### Write ordering
+
+Every write to an instance goes into one queue for that instance: `write` and
+`write_async`, text and `structured_mutations` alike. Queued writes are
+processed in parallel, but applied to the instance one at a time, in the order
+they were queued (FIFO). A write is never applied ahead of an older one, even
+when its own processing finished first.
+
+- `write_async` returns once the write is queued. `write_status` reports
+  `QUEUED` until processing starts, and `EXTRACTED` while a processed write
+  waits for older writes to be applied.
+- `write` waits in the same queue and returns once its own write is applied. It
+  does not jump ahead of async writes queued before it.
+- The order is the order the server receives the writes. Two writes sent at the
+  same time (from two threads, or `asyncio.gather`) have no defined order
+  between them, so when one must apply after another, wait for the first call
+  to return (`write_async` returning its `write_id` is enough) before sending
+  the second.
+- Reads are not queued: a read sees only writes that have completed.
+
+```python
+inst.write_async("Bob joined the team as a designer.")
+inst.write_async("Bob moved to the London office.")
+# Applied after both writes above, in order.
+inst.write(structured_mutations=[
+    {"object_mutation": {"object_type": "person", "update": {"key": {"name": "Bob"}, "values": {"role": "lead designer"}}}},
+])
+```
+
 #### Read modes
 
 ```python
