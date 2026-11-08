@@ -571,6 +571,54 @@ relations:
 
 Field types: `str`, `int`, `float`, `bool`, `date`, `datetime`.
 
+### Mergeable text fields
+
+By default a write replaces a field's stored value. A `str` field can instead
+declare a `merge`, so a later text write merges its value into the text already
+stored:
+
+```yaml
+objects:
+  project:
+    fields:
+      name:
+        type: str
+        required: true
+      next_steps:
+        type: str
+        description: what is still to be done on the project, one step per line
+        merge:
+          rules:
+            - Keep every step that is still open.
+            - Drop a step the text says is done.
+          max_length: 400
+    primary_key: [name]
+```
+
+- `max_length` is required; it caps the merged text.
+- With `rules`, the server merges the new value into the stored one by those
+  rules, within the cap.
+- Without `rules`, the new value is appended on its own line, leaving out lines
+  whose facts are already stated; past the cap, the text is shortened, keeping
+  every fact.
+- If a merge cannot be made, the new value is appended and nothing stored is
+  cut.
+- Only text writes merge, through the server's diff engine: a text write that
+  passes `diff_engine=False` to such a schema is refused, and
+  `structured_mutations` replace the value as given.
+- Adding, changing or removing a `merge` is a metadata-only schema change.
+
+Where the new value contradicted the stored one, the write's result says what
+each said and which one the merge kept:
+
+```python
+result = inst.write("The Harbour Wall survey moved to 10 March.")
+for c in result.changes.get("merge_contradictions", []):
+    print(c["object_type_name"], c["identity"], c["field"], c["stored"], "->", c["new"], "kept:", c["kept"])
+```
+
+The key is omitted when there was no contradiction.
+
 ## Schema evolution
 
 Schemas can change after creation. xmemory supports **safe, data-preserving

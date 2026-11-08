@@ -371,6 +371,11 @@ class WriteResult(BaseModel):
     # than 100, none is kept as it was and the last of them are folded once more per operation,
     # with an empty ``object_type_name`` too), so summing ``count`` per operation still gives the
     # totals. A record the scope named can end up folded. Only a folded entry has the ``folded`` key.
+    # Also ``merge_contradictions`` when a ``str`` field whose schema declares a ``merge`` took a new
+    # value that contradicted the stored one: one entry per contradiction, with ``object_type_name``,
+    # ``identity`` (the record's primary key, empty for a record without one), ``field``, ``stored``
+    # and ``new`` (what each said, cut to 300 characters) and ``kept`` (``"stored"`` or ``"new"``).
+    # Advisory: the write landed either way. Omitted when there is none, and by a server that predates it.
     # Absent (``None``) on responses from an older server.
     changes: Any = None
 

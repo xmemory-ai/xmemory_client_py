@@ -2,6 +2,21 @@
 
 All notable changes to `xmemory-ai` are documented here.
 
+## 0.23.1
+
+Documentation-only release: describes mergeable text fields. No API or behavior
+change.
+
+### Changed
+
+- The README's "Schema format" section gains "Mergeable text fields": a `str`
+  field may declare a `merge` (`rules` and a required `max_length`), so a later
+  text write merges its value into the stored text instead of replacing it.
+- The `write` docstrings (sync and async clients) and the `WriteResult.changes`
+  comment describe `changes["merge_contradictions"]`: one entry per
+  contradiction a merge resolved, with `object_type_name`, `identity`, `field`,
+  `stored`, `new` and `kept`. Advisory, and omitted when there is none.
+
 ## 0.23.0
 
 Tells a read the server could not answer as asked apart from one that matched

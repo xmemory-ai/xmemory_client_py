@@ -155,6 +155,14 @@ class InstanceAPI:
 
         ``extraction_logic`` and ``diff_engine`` only affect the ``text`` path.
 
+        A ``str`` field whose schema declares a ``merge`` takes a text write's
+        value merged into the text already stored, instead of replacing it.
+        Where the two contradicted each other,
+        ``result.changes["merge_contradictions"]`` says what each said and which
+        one the merge kept. Only the server's diff engine merges, so a text write
+        that passes ``diff_engine=False`` to such a schema is refused;
+        ``structured_mutations`` replace the value as given.
+
         Pass ``scope`` — a `WriteScope` of concrete existing objects, each named
         by its user-defined primary key — to anchor a text write to them. The
         write is then confined to the scope: it may only modify or delete the
@@ -455,6 +463,14 @@ class AsyncInstanceAPI:
         a ``None`` value in a mutation's ``values`` clears that field.
 
         ``extraction_logic`` and ``diff_engine`` only affect the ``text`` path.
+
+        A ``str`` field whose schema declares a ``merge`` takes a text write's
+        value merged into the text already stored, instead of replacing it.
+        Where the two contradicted each other,
+        ``result.changes["merge_contradictions"]`` says what each said and which
+        one the merge kept. Only the server's diff engine merges, so a text write
+        that passes ``diff_engine=False`` to such a schema is refused;
+        ``structured_mutations`` replace the value as given.
 
         Pass ``scope`` — a `WriteScope` of concrete existing objects, each named
         by its user-defined primary key — to anchor a text write to them. The
