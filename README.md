@@ -635,14 +635,14 @@ To drive a migration yourself (e.g. renaming a field), ask the server to
 
 ```python
 import yaml
-from xmemory import XmemoryClient
+from xmemory import SchemaType, XmemoryClient
 
 client = XmemoryClient(api_key="xmem_...")
 current = client.admin.get_instance_schema("<instance-id>").data_schema
 
 # 1. Enhance — produce the new schema + an executor-ready migration plan.
-enhanced = client.admin.enhance_schema(
-    cluster_id="<cluster-id>",
+enhanced = client.admin.enhance_instance_schema(
+    instance_id="<instance-id>",
     schema_description="Rename Person.mail to Person.email.",
     current_yml_schema=yaml.safe_dump(current),
 )
@@ -667,6 +667,11 @@ info = client.admin.update_instance_schema(
 )
 print(info.migration_id, info.prior_version, "->", info.new_version)
 ```
+
+`enhance_instance_schema` runs on the model the instance is configured to use.
+To enhance a schema not tied to an instance, call
+`client.admin.enhance_schema("<cluster-id>", description, current_yaml)`, which
+runs on the cluster's model.
 
 ### Migration history
 
@@ -846,6 +851,7 @@ except XmemoryAPIError as e:
 | `admin.delete_instance()` | `list[str]` |
 | `admin.generate_schema()` | `GenerateSchemaResult` |
 | `admin.enhance_schema()` | `EnhanceSchemaResult` |
+| `admin.enhance_instance_schema()` | `EnhanceSchemaResult` |
 | `admin.dry_run_migration()` | `DryRunResult` |
 | `admin.list_migrations()` | `ListMigrationsResult` |
 | `admin.get_migration()` | `MigrationRecord` |

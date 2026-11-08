@@ -3,7 +3,8 @@
 These models mirror the server-side wire formats one-to-one (snake_case
 field names), so a JSON payload round-trips through them unchanged. They
 back the schema-evolution methods on :class:`xmemory._admin.AdminAPI`
-(``enhance_schema`` / ``update_instance_schema`` / ``dry_run_migration`` /
+(``enhance_instance_schema`` / ``enhance_schema`` / ``update_instance_schema`` /
+``dry_run_migration`` /
 ``list_migrations`` / ``get_migration``) and on
 :class:`xmemory._instance.InstanceAPI` (``review_suggestions`` /
 ``decide_suggestions`` / ``apply_pending_decisions``).
@@ -170,7 +171,7 @@ MigrationOp = Annotated[
 
 class MigrationPlan(BaseModel):
     """An ordered sequence of migration ops — the stable wire format the
-    server emits from ``enhance_schema`` and consumes on
+    server emits from ``enhance_instance_schema`` / ``enhance_schema`` and consumes on
     ``update_instance_schema`` / ``dry_run_migration``."""
 
     ops: list[MigrationOp] = []
@@ -190,12 +191,12 @@ def parse_migration_plan(plan: dict[str, Any]) -> MigrationPlan:
 
 
 # ---------------------------------------------------------------------------
-# enhance_schema result.
+# enhance_instance_schema / enhance_schema result.
 # ---------------------------------------------------------------------------
 
 
 class EnhanceSchemaResult(BaseModel):
-    """Return shape of :meth:`AdminAPI.enhance_schema`.
+    """Return shape of :meth:`AdminAPI.enhance_instance_schema` and :meth:`AdminAPI.enhance_schema`.
 
     ``data_schema`` is the produced XMD as a dict. ``migration_plan`` is the
     reconciled, executor-ready plan you pass straight to
