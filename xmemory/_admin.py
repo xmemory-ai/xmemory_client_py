@@ -179,16 +179,42 @@ class AdminAPI:
         *,
         timeout: float | None = None,
     ) -> EnhanceSchemaResult:
-        """Evolve an existing schema, returning the new schema and a migration plan.
+        """Evolve a schema not tied to an instance, on the cluster's model.
 
-        Pass the instance's current YAML schema plus a description of the change
-        you want. The result's ``migration_plan`` is executor-ready: hand it to
-        :meth:`dry_run_migration` to preview the DDL, then to
-        :meth:`update_instance_schema` to apply it.
+        Pass the current YAML schema plus a description of the change you want;
+        the result holds the new schema and a migration plan. To evolve an
+        instance's schema, use :meth:`enhance_instance_schema`.
         """
         return self._t.request_one(
             "POST",
             f"/clusters/{cluster_id}/instances/generate_schema",
+            EnhanceSchemaResult,
+            body=_GenerateSchemaRequest(
+                schema_description=schema_description,
+                current_yml_schema=current_yml_schema,
+            ),
+            timeout=timeout,
+        )
+
+    def enhance_instance_schema(
+        self,
+        instance_id: str,
+        schema_description: str,
+        current_yml_schema: str,
+        *,
+        timeout: float | None = None,
+    ) -> EnhanceSchemaResult:
+        """Evolve an instance's schema, returning the new schema and a migration plan.
+
+        Pass the instance's current YAML schema plus a description of the change
+        you want; nothing is applied. It runs on the model the instance is
+        configured to use. The result's ``migration_plan`` is executor-ready:
+        hand it to :meth:`dry_run_migration` to preview the DDL, then to
+        :meth:`update_instance_schema` to apply it.
+        """
+        return self._t.request_one(
+            "POST",
+            f"/instances/{instance_id}/schema/enhance",
             EnhanceSchemaResult,
             body=_GenerateSchemaRequest(
                 schema_description=schema_description,
@@ -214,7 +240,8 @@ class AdminAPI:
         """Replace the schema of an instance.
 
         For a non-additive change (rename / remove / type change) pass the
-        ``migration_plan`` produced by :meth:`enhance_schema`; the server
+        ``migration_plan`` produced by :meth:`enhance_instance_schema` or
+        :meth:`enhance_schema`; the server
         rejects non-additive changes that arrive without a plan. Set
         ``confirm_destructive=True`` to authorise ops that drop data
         (remove object/field, lossy type cast). The returned ``InstanceInfo``
@@ -500,16 +527,42 @@ class AsyncAdminAPI:
         *,
         timeout: float | None = None,
     ) -> EnhanceSchemaResult:
-        """Evolve an existing schema, returning the new schema and a migration plan.
+        """Evolve a schema not tied to an instance, on the cluster's model.
 
-        Pass the instance's current YAML schema plus a description of the change
-        you want. The result's ``migration_plan`` is executor-ready: hand it to
-        :meth:`dry_run_migration` to preview the DDL, then to
-        :meth:`update_instance_schema` to apply it.
+        Pass the current YAML schema plus a description of the change you want;
+        the result holds the new schema and a migration plan. To evolve an
+        instance's schema, use :meth:`enhance_instance_schema`.
         """
         return await self._t.request_one(
             "POST",
             f"/clusters/{cluster_id}/instances/generate_schema",
+            EnhanceSchemaResult,
+            body=_GenerateSchemaRequest(
+                schema_description=schema_description,
+                current_yml_schema=current_yml_schema,
+            ),
+            timeout=timeout,
+        )
+
+    async def enhance_instance_schema(
+        self,
+        instance_id: str,
+        schema_description: str,
+        current_yml_schema: str,
+        *,
+        timeout: float | None = None,
+    ) -> EnhanceSchemaResult:
+        """Evolve an instance's schema, returning the new schema and a migration plan.
+
+        Pass the instance's current YAML schema plus a description of the change
+        you want; nothing is applied. It runs on the model the instance is
+        configured to use. The result's ``migration_plan`` is executor-ready:
+        hand it to :meth:`dry_run_migration` to preview the DDL, then to
+        :meth:`update_instance_schema` to apply it.
+        """
+        return await self._t.request_one(
+            "POST",
+            f"/instances/{instance_id}/schema/enhance",
             EnhanceSchemaResult,
             body=_GenerateSchemaRequest(
                 schema_description=schema_description,
@@ -535,7 +588,8 @@ class AsyncAdminAPI:
         """Replace the schema of an instance.
 
         For a non-additive change (rename / remove / type change) pass the
-        ``migration_plan`` produced by :meth:`enhance_schema`; the server
+        ``migration_plan`` produced by :meth:`enhance_instance_schema` or
+        :meth:`enhance_schema`; the server
         rejects non-additive changes that arrive without a plan. Set
         ``confirm_destructive=True`` to authorise ops that drop data
         (remove object/field, lossy type cast). The returned ``InstanceInfo``
