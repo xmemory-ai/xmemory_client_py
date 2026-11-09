@@ -157,10 +157,14 @@ class InstanceAPI:
 
         A ``str`` field whose schema declares a ``merge`` takes a text write's
         value merged into the text already stored, instead of replacing it.
-        Where the two contradicted each other,
+        Where a merge that changed the field found the two contradicting,
         ``result.changes["merge_contradictions"]`` says what each said and which
-        one the merge kept. Only the server's diff engine merges, so a text write
-        that passes ``diff_engine=False`` to such a schema is refused;
+        one it kept; an absent key does not prove they agreed, since a merge that
+        failed, appended, or left the stored text unchanged reports none. Only the
+        server's diff engine merges, so a text write that runs without it on such
+        a schema (``diff_engine=False``, or a server whose default is off) raises
+        `XmemoryAPIError` (HTTP 400, ``VALIDATION_ERROR``); through `write_async`
+        the queued write fails, which `write_status` reports.
         ``structured_mutations`` replace the value as given.
 
         Pass ``scope`` — a `WriteScope` of concrete existing objects, each named
@@ -466,10 +470,14 @@ class AsyncInstanceAPI:
 
         A ``str`` field whose schema declares a ``merge`` takes a text write's
         value merged into the text already stored, instead of replacing it.
-        Where the two contradicted each other,
+        Where a merge that changed the field found the two contradicting,
         ``result.changes["merge_contradictions"]`` says what each said and which
-        one the merge kept. Only the server's diff engine merges, so a text write
-        that passes ``diff_engine=False`` to such a schema is refused;
+        one it kept; an absent key does not prove they agreed, since a merge that
+        failed, appended, or left the stored text unchanged reports none. Only the
+        server's diff engine merges, so a text write that runs without it on such
+        a schema (``diff_engine=False``, or a server whose default is off) raises
+        `XmemoryAPIError` (HTTP 400, ``VALIDATION_ERROR``); through `write_async`
+        the queued write fails, which `write_status` reports.
         ``structured_mutations`` replace the value as given.
 
         Pass ``scope`` — a `WriteScope` of concrete existing objects, each named

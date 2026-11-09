@@ -14,8 +14,9 @@ change.
   text write merges its value into the stored text instead of replacing it.
 - The `write` docstrings (sync and async clients) and the `WriteResult.changes`
   comment describe `changes["merge_contradictions"]`: one entry per
-  contradiction a merge resolved, with `object_type_name`, `identity`, `field`,
-  `stored`, `new` and `kept`. Advisory, and omitted when there is none.
+  contradiction a merge reported for a field the write changed, with
+  `object_type_name`, `identity`, `field`, `stored`, `new` and `kept`. Advisory,
+  and omitted when there is none; an absent key does not prove the texts agreed.
 
 ## 0.24.0
 

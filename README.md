@@ -573,9 +573,10 @@ Field types: `str`, `int`, `float`, `bool`, `date`, `datetime`.
 
 ### Mergeable text fields
 
-By default a write replaces a field's stored value. A `str` field can instead
-declare a `merge`, so a later text write merges its value into the text already
-stored:
+By default a write replaces a field's stored value. A `str` field that is not
+part of the primary key can instead declare a `merge`, so a later text write
+merges its value into the text already stored. A server from before field merges
+keeps the block but ignores it, and replaces the value as before:
 
 ```yaml
 objects:
@@ -595,29 +596,39 @@ objects:
     primary_key: [name]
 ```
 
-- `max_length` is required; it caps the merged text.
+- `max_length` is required, a whole number from 1 to 20,000: the length the
+  merge keeps the text within. `rules` is optional: up to 50 non-empty lines of
+  at most 1,000 characters each. `merge` takes no other key, and a schema that
+  breaks any of this is refused.
 - With `rules`, the server merges the new value into the stored one by those
   rules, within the cap.
 - Without `rules`, the new value is appended on its own line, leaving out lines
   whose facts are already stated; past the cap, the text is shortened, keeping
   every fact.
-- If a merge cannot be made, the new value is appended and nothing stored is
-  cut.
-- Only text writes merge, through the server's diff engine: a text write that
-  passes `diff_engine=False` to such a schema is refused, and
+- If a merge cannot be made, the new value is appended, even past the cap, and
+  nothing stored is cut.
+- Only text writes merge, through the server's diff engine. A text write that
+  runs without it on such a schema (`diff_engine=False`, or a server whose
+  default is off) raises `XmemoryAPIError` (HTTP 400, `VALIDATION_ERROR`);
+  through `write_async` the queued write fails, which `write_status` reports.
   `structured_mutations` replace the value as given.
 - Adding, changing or removing a `merge` is a metadata-only schema change.
 
-Where the new value contradicted the stored one, the write's result says what
-each said and which one the merge kept:
+Where a merge that changed the field found the new value contradicting the
+stored one, the write's result says what each said and which one it kept:
 
 ```python
 result = inst.write("The Harbour Wall survey moved to 10 March.")
-for c in result.changes.get("merge_contradictions", []):
+for c in (result.changes or {}).get("merge_contradictions", []):
     print(c["object_type_name"], c["identity"], c["field"], c["stored"], "->", c["new"], "kept:", c["kept"])
 ```
 
-The key is omitted when there was no contradiction.
+The key is omitted when there is no such entry, and `changes` is `None` on a
+response from an older server. An absent key does not prove the texts agreed: a
+merge that failed, fell back to appending, or left the stored text unchanged
+reports none. `identity` is the record's key rendered `field='value'`, a
+composite one comma-separated; it is empty when the record has no key or part
+of it is unknown.
 
 ## Schema evolution
 
