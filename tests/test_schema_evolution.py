@@ -152,6 +152,54 @@ def test_enhance_schema_parses_migration_plan(httpx_mock, client):
 
 
 # ---------------------------------------------------------------------------
+# admin.enhance_instance_schema — the instance's own route
+# ---------------------------------------------------------------------------
+
+_ENHANCED = {
+    "data_schema": {"objects": {}},
+    "migration_plan": {"ops": [{"op_type": "rename_field", "object_name": "P", "old_name": "a", "new_name": "b"}]},
+    "summary": "rename a to b",
+    "warnings": [],
+    "repair_log": [],
+}
+
+
+def test_enhance_instance_schema_posts_to_the_instances_route(httpx_mock, client):
+    route = httpx_mock.post(f"/instances/{INSTANCE_ID}/schema/enhance").mock(
+        return_value=httpx.Response(200, json=_api_ok([_ENHANCED]))
+    )
+
+    result = client.admin.enhance_instance_schema(INSTANCE_ID, "rename a to b", "objects:\n  P: {}")
+
+    assert route.called
+    assert json.loads(route.calls.last.request.content) == {
+        "schema_description": "rename a to b",
+        "current_yml_schema": "objects:\n  P: {}",
+    }
+    assert isinstance(result, EnhanceSchemaResult)
+    assert result.migration_plan is not None
+    assert isinstance(result.migration_plan.ops[0], RenameField)
+    assert result.summary == "rename a to b"
+
+
+async def test_enhance_instance_schema_posts_to_the_instances_route_async(httpx_mock, base_url):
+    route = httpx_mock.post(f"/instances/{INSTANCE_ID}/schema/enhance").mock(
+        return_value=httpx.Response(200, json=_api_ok([_ENHANCED]))
+    )
+
+    async with AsyncXmemoryClient(url=base_url, api_key="test-api-key") as async_client:
+        result = await async_client.admin.enhance_instance_schema(INSTANCE_ID, "rename a to b", "objects:\n  P: {}")
+
+    assert route.called
+    assert json.loads(route.calls.last.request.content) == {
+        "schema_description": "rename a to b",
+        "current_yml_schema": "objects:\n  P: {}",
+    }
+    assert isinstance(result, EnhanceSchemaResult)
+    assert result.summary == "rename a to b"
+
+
+# ---------------------------------------------------------------------------
 # admin.update_instance_schema — body shape + migration response fields
 # ---------------------------------------------------------------------------
 

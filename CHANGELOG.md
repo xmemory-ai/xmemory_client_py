@@ -2,7 +2,7 @@
 
 All notable changes to `xmemory-ai` are documented here.
 
-## 0.23.1
+## 0.24.1
 
 Documentation-only release: describes mergeable text fields. No API or behavior
 change.
@@ -16,6 +16,22 @@ change.
   comment describe `changes["merge_contradictions"]`: one entry per
   contradiction a merge resolved, with `object_type_name`, `identity`, `field`,
   `stored`, `new` and `kept`. Advisory, and omitted when there is none.
+
+## 0.24.0
+
+Enhances an instance's schema on the instance's own route.
+
+### Added
+
+- `admin.enhance_instance_schema(instance_id, schema_description,
+  current_yml_schema)` on `XmemoryClient` and `AsyncXmemoryClient` — evolves an
+  instance's schema and returns the new schema and a migration plan, like
+  `enhance_schema`, but on the model the instance is configured to use. It
+  calls `POST /instances/{instance_id}/schema/enhance`, with the same body,
+  result and `instance.generate_schema` permission as `enhance_schema`.
+  `enhance_schema(cluster_id, …)` stays for a schema not tied to an instance,
+  on the cluster's model. The README's direct migration flow and
+  `examples/direct_rename.py` now use the instance's route.
 
 ## 0.23.0
 

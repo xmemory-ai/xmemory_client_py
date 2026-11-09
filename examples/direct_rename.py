@@ -1,4 +1,4 @@
-"""Direct migration flow: enhance_schema → dry_run_migration → update_instance_schema.
+"""Direct migration flow: enhance_instance_schema → dry_run_migration → update_instance_schema.
 
 Drives a rename yourself instead of going through the suggestion engine. The
 server emits a structured migration plan; you preview the DDL, then apply it.
@@ -8,7 +8,6 @@ Run against a test instance:
 
     export XMEM_API_KEY=xmem_...
     export XMEM_API_URL=<api-url>   # optional; defaults to https://api.xmemory.ai
-    export XMEM_CLUSTER_ID=<cluster-id>
     export XMEM_INSTANCE_ID=<instance-id>
     python examples/direct_rename.py
 """
@@ -21,7 +20,6 @@ from xmemory import SchemaType, XmemoryAPIError, XmemoryClient
 
 
 def main() -> None:
-    cluster_id = os.environ["XMEM_CLUSTER_ID"]
     instance_id = os.environ["XMEM_INSTANCE_ID"]
     client = XmemoryClient()
 
@@ -29,8 +27,8 @@ def main() -> None:
     current_yaml = yaml.safe_dump(current_schema)
 
     # 1. Enhance — get the new schema + an executor-ready migration plan.
-    enhanced = client.admin.enhance_schema(
-        cluster_id=cluster_id,
+    enhanced = client.admin.enhance_instance_schema(
+        instance_id=instance_id,
         schema_description="Rename the `mail` field on the person object to `email`.",
         current_yml_schema=current_yaml,
     )
