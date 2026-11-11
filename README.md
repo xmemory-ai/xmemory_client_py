@@ -529,9 +529,10 @@ Deleting a record never deletes the records linked to it. The relation's
 `on_delete` removes or clears each link, and the write lists those links under
 `changes["deleted"]["relations"]`; a link the same write also states may be
 reported under `relationship_outcomes` as well, or instead. A record whose last
-link of a relation was the deleted one is listed in `changes["orphaned_records"]`,
-so you can decide whether it still belongs. `relation` is the relation's class
-name: an XMD relation `works_at` comes back as `WorksAt`:
+link of a relation was the deleted one is listed in
+`changes["orphaned_records"]`, so you can decide whether it still belongs.
+`relation` is the relation's class name: an XMD relation `works_at` comes back
+as `WorksAt`:
 
 ```python
 result = inst.write("Remove the Harbour Wall project.")
@@ -542,16 +543,17 @@ for r in (result.changes or {}).get("orphaned_records", []):
 
 The key is omitted when there is no such record and by a server that predates
 the report, so a missing key means none reported, and `changes` is `None` on a
-response from an older server. A record the write deleted or linked again is not
-listed. `identity` names the record as the write's other entries do: by the
-write's own identifier when the write names it, otherwise by its key rendered
-`field='value'`, a composite one comma-separated, or empty when it has none or
-part of it is unknown. Past 100 entries of one type and relation, the rest
-arrive as one entry marked `"folded": True`, with an empty `identity` and their
-`count`. Only a folded entry has the `folded` and `count` keys, so read `folded`
-with `.get`. `deleted["relations"]` folds a delete's links past 100 of one
-relation into one entry with that relation's `name`, empty `endpoints` and
-`fields`, `"folded": True` and their `count`.
+response from an older server. A record the write deleted, or that still has a
+link of that relation when the write completes, is not listed. `identity` names
+the record as the write's other entries do: by the write's own identifier when
+the write names it, otherwise by its key rendered `field='value'`, a composite
+one comma-separated, or empty when it has none or part of it is unknown. Past
+100 entries of one type and relation, the rest arrive as one entry marked
+`"folded": True`, with an empty `identity` and their `count`. Only a folded
+entry has the `folded` and `count` keys, so read `folded` with `.get`.
+`deleted["relations"]` folds a delete's links past 100 of one relation into one
+entry with that relation's `name`, empty `endpoints` and `fields`,
+`"folded": True` and their `count`.
 
 #### Extraction logic
 

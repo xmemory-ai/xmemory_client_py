@@ -381,12 +381,13 @@ class WriteResult(BaseModel):
     # Also ``orphaned_records``: the stored records a delete in the write left with no link of a relation they
     # had one of, one per record and relation, with ``object_type_name``, ``identity`` and ``relation`` (the
     # relation's class name: XMD ``works_at`` comes back as ``WorksAt``).
-    # Advisory: delete or relink such a record if it no longer belongs. A record the write deleted or linked
-    # again is not listed. Past 100 entries of one type and relation, the rest arrive as one entry marked
-    # ``folded: True`` with an empty ``identity`` and their ``count``. The delete's links are listed under
-    # ``deleted["relations"]`` (a link the same write also states may be reported under
-    # ``relationship_outcomes`` as well, or instead); past 100 of one relation they fold into one entry with
-    # that relation's ``name``, empty ``endpoints`` and ``fields``, ``folded: True`` and their ``count``.
+    # Advisory: delete or relink such a record if it no longer belongs. A record the write deleted, or that
+    # still has a link of that relation when the write completes, is not listed. Past 100 entries of one type
+    # and relation, the rest arrive as one entry marked ``folded: True`` with an empty ``identity`` and their
+    # ``count``. The delete's links are listed under ``deleted["relations"]`` (a link the same write also
+    # states may be reported under ``relationship_outcomes`` as well, or instead); past 100 of one relation
+    # they fold into one entry with that relation's ``name``, empty ``endpoints`` and ``fields``,
+    # ``folded: True`` and their ``count``.
     # Omitted when there is none and by a server that predates it, so absence means none reported.
     # Absent (``None``) on responses from an older server.
     changes: Any = None
