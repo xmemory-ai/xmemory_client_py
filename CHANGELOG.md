@@ -10,10 +10,13 @@ change.
 ### Changed
 
 - The README gains "What a delete reports": deleting a record never deletes the
-  records linked to it; its links are listed under `changes["deleted"]["relations"]`,
-  and a record left with no link of a relation under `changes["orphaned_records"]`,
-  with `object_type_name`, `identity` and `relation`. Advisory, and omitted when
-  there is none. Past 100 of one type and relation, the rest arrive folded into one
+  records linked to it; its links are listed under `changes["deleted"]["relations"]`
+  (a link the same write also wrote is reported under `relationship_outcomes`
+  instead), and a record left with no link of a relation under
+  `changes["orphaned_records"]`, one entry per record and relation, with
+  `object_type_name`, `identity` and `relation`. Advisory, and omitted when there
+  is none and by a server that predates the report, so a missing key means none
+  reported. Past 100 of one type and relation, the rest arrive folded into one
   entry with a `count`.
 - The `write` docstrings (sync and async clients) and the `WriteResult.changes`
   comment describe the same.

@@ -169,10 +169,12 @@ class InstanceAPI:
 
         Deleting a record never deletes the records linked to it: the relation's
         ``on_delete`` removes or clears each link, and the write lists those
-        links under ``result.changes["deleted"]["relations"]``. A stored record
-        left with no link of a relation it had one of is listed in
-        ``result.changes["orphaned_records"]``, so you can decide whether it
-        still belongs.
+        links under ``result.changes["deleted"]["relations"]`` (a link the same
+        write also wrote is reported under ``relationship_outcomes`` instead).
+        A stored record left with no link of a relation it had one of is listed
+        in ``result.changes["orphaned_records"]``, so you can decide whether it
+        still belongs. The key is omitted when there is none and by a server
+        that predates the report, so a missing key means none reported.
 
         Pass ``scope`` — a `WriteScope` of concrete existing objects, each named
         by its user-defined primary key — to anchor a text write to them. The
@@ -489,10 +491,12 @@ class AsyncInstanceAPI:
 
         Deleting a record never deletes the records linked to it: the relation's
         ``on_delete`` removes or clears each link, and the write lists those
-        links under ``result.changes["deleted"]["relations"]``. A stored record
-        left with no link of a relation it had one of is listed in
-        ``result.changes["orphaned_records"]``, so you can decide whether it
-        still belongs.
+        links under ``result.changes["deleted"]["relations"]`` (a link the same
+        write also wrote is reported under ``relationship_outcomes`` instead).
+        A stored record left with no link of a relation it had one of is listed
+        in ``result.changes["orphaned_records"]``, so you can decide whether it
+        still belongs. The key is omitted when there is none and by a server
+        that predates the report, so a missing key means none reported.
 
         Pass ``scope`` — a `WriteScope` of concrete existing objects, each named
         by its user-defined primary key — to anchor a text write to them. The

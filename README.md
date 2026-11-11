@@ -527,25 +527,30 @@ Things to know before reaching for it:
 
 Deleting a record never deletes the records linked to it. The relation's
 `on_delete` removes or clears each link, and the write lists those links under
-`changes["deleted"]["relations"]`. A record whose last link of a relation was the
-deleted one is listed in `changes["orphaned_records"]`, so you can decide whether
-it still belongs:
+`changes["deleted"]["relations"]`; a link the same write also wrote is reported
+under `relationship_outcomes` instead. A record whose last link of a relation was
+the deleted one is listed in `changes["orphaned_records"]`, so you can decide
+whether it still belongs:
 
 ```python
 result = inst.write("Remove the Harbour Wall project.")
 for r in (result.changes or {}).get("orphaned_records", []):
-    print(r["object_type_name"], r["identity"], "has no", r["relation"], "link left")
+    who = f'{r["count"]} more' if r.get("folded") else r["identity"]
+    print(r["object_type_name"], who, "has no", r["relation"], "link left")
 ```
 
-The key is omitted when there is no such record, and `changes` is `None` on a
+The key is omitted when there is no such record and by a server that predates
+the report, so a missing key means none reported, and `changes` is `None` on a
 response from an older server. A record the write deleted or linked again is not
 listed. `identity` names the record as the write's other entries do: by the
 write's own identifier when the write names it, otherwise by its key rendered
 `field='value'`, a composite one comma-separated, or empty when it has none or
 part of it is unknown. Past 100 entries of one type and relation, the rest
 arrive as one entry marked `"folded": True`, with an empty `identity` and their
-`count`; `deleted["relations"]` folds a delete's links past 100 of one relation
-the same way.
+`count`. Only a folded entry has the `folded` and `count` keys, so read `folded`
+with `.get`. `deleted["relations"]` folds a delete's links past 100 of one
+relation into one entry with that relation's `name`, empty `endpoints` and
+`fields`, `"folded": True` and their `count`.
 
 #### Extraction logic
 
