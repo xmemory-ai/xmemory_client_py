@@ -11,8 +11,9 @@ change.
 
 - The README gains "What a delete reports": deleting a record never deletes the
   records linked to it; its links are listed under `changes["deleted"]["relations"]`
-  (a link the same write also wrote is reported under `relationship_outcomes`
-  instead), and a record left with no link of a relation under
+  (a link the same write also states may be reported under
+  `relationship_outcomes` as well, or instead), and a record left with no link
+  of a relation under
   `changes["orphaned_records"]`, one entry per record and relation, with
   `object_type_name`, `identity` and `relation`. Advisory, and omitted when there
   is none and by a server that predates the report, so a missing key means none
