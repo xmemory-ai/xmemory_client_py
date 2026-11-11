@@ -378,6 +378,12 @@ class WriteResult(BaseModel):
     # ``"new"``). Advisory: the write landed either way. Omitted when there is no such entry and by a
     # server that predates it; an absent key does not prove the texts agreed, since a merge that failed,
     # appended, or left the stored text unchanged reports none.
+    # Also ``orphaned_records``: the stored records a delete in the write left with no link of a relation they
+    # had one of, one entry each with ``object_type_name``, ``identity`` and ``relation``. Advisory: delete or
+    # relink such a record if it no longer belongs. A record the write deleted or linked again is not listed.
+    # Past 100 entries of one type and relation, the rest arrive as one entry marked ``folded: True`` with an
+    # empty ``identity`` and their ``count``. The delete's links are listed under ``deleted["relations"]``,
+    # folded the same way past 100 of one relation. Omitted when there is none and by a server that predates it.
     # Absent (``None``) on responses from an older server.
     changes: Any = None
 

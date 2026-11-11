@@ -167,6 +167,13 @@ class InstanceAPI:
         the queued write fails, which `write_status` reports.
         ``structured_mutations`` replace the value as given.
 
+        Deleting a record never deletes the records linked to it: the relation's
+        ``on_delete`` removes or clears each link, and the write lists those
+        links under ``result.changes["deleted"]["relations"]``. A stored record
+        left with no link of a relation it had one of is listed in
+        ``result.changes["orphaned_records"]``, so you can decide whether it
+        still belongs.
+
         Pass ``scope`` — a `WriteScope` of concrete existing objects, each named
         by its user-defined primary key — to anchor a text write to them. The
         write is then confined to the scope: it may only modify or delete the
@@ -479,6 +486,13 @@ class AsyncInstanceAPI:
         `XmemoryAPIError` (HTTP 400, ``VALIDATION_ERROR``); through `write_async`
         the queued write fails, which `write_status` reports.
         ``structured_mutations`` replace the value as given.
+
+        Deleting a record never deletes the records linked to it: the relation's
+        ``on_delete`` removes or clears each link, and the write lists those
+        links under ``result.changes["deleted"]["relations"]``. A stored record
+        left with no link of a relation it had one of is listed in
+        ``result.changes["orphaned_records"]``, so you can decide whether it
+        still belongs.
 
         Pass ``scope`` — a `WriteScope` of concrete existing objects, each named
         by its user-defined primary key — to anchor a text write to them. The

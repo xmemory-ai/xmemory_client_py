@@ -523,6 +523,30 @@ Things to know before reaching for it:
   surfaces through `write_status` as a failed write; under `"drop"` the write
   completes and `write_status().changes` carries what it skipped.
 
+#### What a delete reports
+
+Deleting a record never deletes the records linked to it. The relation's
+`on_delete` removes or clears each link, and the write lists those links under
+`changes["deleted"]["relations"]`. A record whose last link of a relation was the
+deleted one is listed in `changes["orphaned_records"]`, so you can decide whether
+it still belongs:
+
+```python
+result = inst.write("Remove the Harbour Wall project.")
+for r in (result.changes or {}).get("orphaned_records", []):
+    print(r["object_type_name"], r["identity"], "has no", r["relation"], "link left")
+```
+
+The key is omitted when there is no such record, and `changes` is `None` on a
+response from an older server. A record the write deleted or linked again is not
+listed. `identity` names the record as the write's other entries do: by the
+write's own identifier when the write names it, otherwise by its key rendered
+`field='value'`, a composite one comma-separated, or empty when it has none or
+part of it is unknown. Past 100 entries of one type and relation, the rest
+arrive as one entry marked `"folded": True`, with an empty `identity` and their
+`count`; `deleted["relations"]` folds a delete's links past 100 of one relation
+the same way.
+
 #### Extraction logic
 
 ```python

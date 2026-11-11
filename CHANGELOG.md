@@ -2,6 +2,22 @@
 
 All notable changes to `xmemory-ai` are documented here.
 
+## 0.24.2
+
+Documentation-only release: describes what a delete reports. No API or behavior
+change.
+
+### Changed
+
+- The README gains "What a delete reports": deleting a record never deletes the
+  records linked to it; its links are listed under `changes["deleted"]["relations"]`,
+  and a record left with no link of a relation under `changes["orphaned_records"]`,
+  with `object_type_name`, `identity` and `relation`. Advisory, and omitted when
+  there is none. Past 100 of one type and relation, the rest arrive folded into one
+  entry with a `count`.
+- The `write` docstrings (sync and async clients) and the `WriteResult.changes`
+  comment describe the same.
+
 ## 0.24.1
 
 Documentation-only release: describes mergeable text fields. No API or behavior
