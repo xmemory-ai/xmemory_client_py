@@ -601,7 +601,9 @@ relations:
     description: person works at company
 ```
 
-Field types: `str`, `int`, `float`, `bool`, `date`, `datetime`.
+Field types: `str`, `int`, `float` and `bool`; `string`, `integer` and `boolean`
+are accepted as aliases. There is no date type: store dates and times in a `str`
+field, and say in its description how they are written.
 
 ### Mergeable text fields
 
