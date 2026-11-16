@@ -1537,7 +1537,8 @@ def test_instance_read_related_types_need_the_schema_permission(httpx_mock, clie
 
     assert exc.value.status == 403
     assert exc.value.code == "FORBIDDEN"
-    assert "instance.get" in str(exc.value)
+    assert re.search(r"\binstance\.get\b(?!_)", str(exc.value))
+    assert "instance.get_own" not in str(exc.value)
 
 
 async def test_async_instance_read_asks_for_related_types(httpx_mock, async_client):

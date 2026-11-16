@@ -4,10 +4,10 @@ Data operations (write/read/extract) require LLM services and may 500
 on a minimal local setup. They are tested separately so admin/instance
 management tests can pass independently.
 
-Requires ``XMEM_API_KEY`` (and optionally ``XMEM_API_URL``) in the env.
-The whole module is skipped when ``XMEM_API_KEY`` is unset, so CI
-(which has no key) never runs these — they're for local dev against a
-real backend.
+Requires both ``XMEM_API_KEY`` and ``XMEM_API_URL`` in the env; there is
+no built-in server. The whole module is skipped unless both are set, so
+CI (which sets neither) never runs these — they're for local dev against
+a real backend.
 """
 
 import os
