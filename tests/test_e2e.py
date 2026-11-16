@@ -25,11 +25,11 @@ from xmemory import (
 )
 
 API_KEY = os.environ.get("XMEM_API_KEY")
-BASE_URL = os.environ.get("XMEM_API_URL", "https://api.stg.xmemory.ai")
+BASE_URL = os.environ.get("XMEM_API_URL")
 
 pytestmark = pytest.mark.skipif(
-    not API_KEY,
-    reason="e2e tests require XMEM_API_KEY (set locally; intentionally unset in CI)",
+    not API_KEY or not BASE_URL,
+    reason="e2e tests require XMEM_API_KEY and XMEM_API_URL (set locally; intentionally unset in CI)",
 )
 
 SCHEMA_YML = """\
