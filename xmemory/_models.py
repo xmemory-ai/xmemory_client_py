@@ -32,7 +32,7 @@ class RelatedTypesMode(str, Enum):
     """What a read says about the schema around its answer.
 
     ``TYPES`` adds :attr:`ReadResult.related_types` to the result; ``NONE`` (the
-    server default) leaves it out. Asking for it needs the ``instance.get_own``
+    server default) leaves it out. Asking for it needs the ``instance.get``
     permission on the API key, the same one the schema endpoints need, on top of
     ``data.read``: a key without it gets a 403 whose message names the permission,
     and the plain read is unaffected.

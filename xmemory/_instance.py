@@ -111,7 +111,7 @@ class InstanceAPI:
         Pass ``include_related_types=RelatedTypesMode.TYPES`` to also get
         :attr:`ReadResult.related_types`: the object types the read touched, the
         fields it did not return, and the object types a declared relation links
-        them to, so a follow-up read can be deliberate. Needs ``instance.get_own``
+        them to, so a follow-up read can be deliberate. Needs ``instance.get``
         on the API key; see :class:`RelatedTypesMode`. ``related_types_depth``
         (1 to 3; the server serves one level when it is unset) follows the
         relations further: every catalog entry then carries its ``distance``
@@ -434,7 +434,7 @@ class AsyncInstanceAPI:
         Pass ``include_related_types=RelatedTypesMode.TYPES`` to also get
         :attr:`ReadResult.related_types`: the object types the read touched, the
         fields it did not return, and the object types a declared relation links
-        them to, so a follow-up read can be deliberate. Needs ``instance.get_own``
+        them to, so a follow-up read can be deliberate. Needs ``instance.get``
         on the API key; see :class:`RelatedTypesMode`. ``related_types_depth``
         (1 to 3; the server serves one level when it is unset) follows the
         relations further: every catalog entry then carries its ``distance``
