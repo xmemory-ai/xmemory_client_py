@@ -1520,13 +1520,14 @@ def test_instance_read_tolerates_a_cardinality_this_release_does_not_know(httpx_
 
 
 def test_instance_read_related_types_need_the_schema_permission(httpx_mock, client):
-    """A key without ``instance.get_own`` is refused with a 403 that names the permission."""
+    """A key without ``instance.get`` is refused with a 403 that names the permission."""
     from xmemory import RelatedTypesMode
 
     httpx_mock.post(f"/instances/{INSTANCE_ID}/read").mock(return_value=httpx.Response(
         403,
         json={"errors": [{"code": "FORBIDDEN", "message": (
-            "Related types need the instance.get_own permission, which this API key does not have. "
+            "Related types need the instance.get permission for this instance, the same access the schema "
+            "endpoint needs, which this caller does not have. "
             'Repeat the read without include_related_types (or with "none") to get the answer alone.'
         )}]},
     ))
@@ -1536,7 +1537,7 @@ def test_instance_read_related_types_need_the_schema_permission(httpx_mock, clie
 
     assert exc.value.status == 403
     assert exc.value.code == "FORBIDDEN"
-    assert "instance.get_own" in str(exc.value)
+    assert "instance.get" in str(exc.value)
 
 
 async def test_async_instance_read_asks_for_related_types(httpx_mock, async_client):
