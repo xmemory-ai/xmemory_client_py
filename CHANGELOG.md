@@ -2,6 +2,24 @@
 
 All notable changes to `xmemory-ai` are documented here.
 
+## 0.24.3
+
+Documentation-only release: corrects the list of schema field types and the name
+of the permission related types need. No API or behavior change.
+
+### Changed
+
+- The permission a read with `include_related_types=RelatedTypesMode.TYPES`
+  needs is named `instance.get`, as the server now calls it (it was
+  `instance.get_own`), in the README, the `read` docstrings and
+  `RelatedTypesMode`.
+
+- The README's "Schema format" section lists the field types the server
+  accepts: `str`, `int`, `float` and `bool`, with `string`, `integer` and
+  `boolean` accepted as aliases. It no longer lists `date` or `datetime`, which
+  are not field types: store dates and times in a `str` field, and say in its
+  description how they are written.
+
 ## 0.24.2
 
 Documentation-only release: describes what a delete reports. No API or behavior
