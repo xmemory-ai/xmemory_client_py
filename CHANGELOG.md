@@ -146,8 +146,7 @@ every scoped record to exist — so "create or update exactly this record, and
 nothing else" is one call. The default is unchanged and the key is sent only
 when it is not `"reject"`, so an unscoped or reject-mode write stays
 byte-identical for a server that predates the option. Drop mode itself requires
-a server that accepts the field, and the server runs it on its diff engine: a
-write that also passes `diff_engine=False` is refused.
+a server that accepts the field.
 
 ### Added
 

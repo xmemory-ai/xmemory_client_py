@@ -153,19 +153,15 @@ class InstanceAPI:
         later mutations may reference objects created earlier in the batch, and
         a ``None`` value in a mutation's ``values`` clears that field.
 
-        ``extraction_logic`` and ``diff_engine`` only affect the ``text`` path.
+        ``extraction_logic`` only affects the ``text`` path.
 
         A ``str`` field whose schema declares a ``merge`` takes a text write's
         value merged into the text already stored, instead of replacing it.
         Where a merge that changed the field found the two contradicting,
         ``result.changes["merge_contradictions"]`` says what each said and which
         one it kept; an absent key does not prove they agreed, since a merge that
-        failed, appended, or left the stored text unchanged reports none. Only the
-        server's diff engine merges, so a text write that runs without it on such
-        a schema (``diff_engine=False``, or a server whose default is off) raises
-        `XmemoryAPIError` (HTTP 400, ``VALIDATION_ERROR``); through `write_async`
-        the queued write fails, which `write_status` reports.
-        ``structured_mutations`` replace the value as given.
+        failed, appended, or left the stored text unchanged reports none. Only
+        text writes merge; ``structured_mutations`` replace the value as given.
 
         Deleting a record never deletes the records linked to it: the relation's
         ``on_delete`` removes or clears each link, and the write lists those
@@ -192,9 +188,7 @@ class InstanceAPI:
         update exactly this record" is one call. Scope applies to text writes
         only, and it additionally requires read permission on the instance: the
         response carries the previous value of every field the write changed,
-        and resolving a scope answers whether each named object is stored. Drop
-        mode runs on the server's diff engine, so a write that also passes
-        ``diff_engine=False`` is refused.
+        and resolving a scope answers whether each named object is stored.
 
         Every write joins the instance's write queue, text and structured alike,
         and `write_async` writes too. Queued writes are processed in parallel but
@@ -476,19 +470,15 @@ class AsyncInstanceAPI:
         later mutations may reference objects created earlier in the batch, and
         a ``None`` value in a mutation's ``values`` clears that field.
 
-        ``extraction_logic`` and ``diff_engine`` only affect the ``text`` path.
+        ``extraction_logic`` only affects the ``text`` path.
 
         A ``str`` field whose schema declares a ``merge`` takes a text write's
         value merged into the text already stored, instead of replacing it.
         Where a merge that changed the field found the two contradicting,
         ``result.changes["merge_contradictions"]`` says what each said and which
         one it kept; an absent key does not prove they agreed, since a merge that
-        failed, appended, or left the stored text unchanged reports none. Only the
-        server's diff engine merges, so a text write that runs without it on such
-        a schema (``diff_engine=False``, or a server whose default is off) raises
-        `XmemoryAPIError` (HTTP 400, ``VALIDATION_ERROR``); through `write_async`
-        the queued write fails, which `write_status` reports.
-        ``structured_mutations`` replace the value as given.
+        failed, appended, or left the stored text unchanged reports none. Only
+        text writes merge; ``structured_mutations`` replace the value as given.
 
         Deleting a record never deletes the records linked to it: the relation's
         ``on_delete`` removes or clears each link, and the write lists those
@@ -515,9 +505,7 @@ class AsyncInstanceAPI:
         update exactly this record" is one call. Scope applies to text writes
         only, and it additionally requires read permission on the instance: the
         response carries the previous value of every field the write changed,
-        and resolving a scope answers whether each named object is stored. Drop
-        mode runs on the server's diff engine, so a write that also passes
-        ``diff_engine=False`` is refused.
+        and resolving a scope answers whether each named object is stored.
 
         Every write joins the instance's write queue, text and structured alike,
         and `write_async` writes too. Queued writes are processed in parallel but
