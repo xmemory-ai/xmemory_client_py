@@ -2,6 +2,16 @@
 
 All notable changes to `xmemory-ai` are documented here.
 
+## 0.24.4
+
+Documentation-only release: the write docs describe merges and drop mode as
+they apply to every text write. No API or behavior change.
+
+### Changed
+
+- The README, the `write` and `write_async` docstrings (sync and async clients)
+  and `WriteScope` describe merges and drop mode for every text write.
+
 ## 0.24.3
 
 Documentation-only release: corrects the list of schema field types and the name
