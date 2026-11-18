@@ -513,9 +513,6 @@ Things to know before reaching for it:
   resolving a scope answers whether each named object is stored, and a
   drop-mode report says what the skipped changes would have written. An API key
   with write access alone is refused.
-- `mode="drop"` runs on the server's **diff engine**: passing it together with
-  `diff_engine=False` is refused with an `XmemoryAPIError`. Leave `diff_engine`
-  alone unless you have a reason not to.
 - A server that predates `mode` never sees the key: it is sent only when it is
   not `"reject"`, so an unscoped or reject-mode write is byte-identical to what
   this client sent before the option existed.
@@ -641,10 +638,7 @@ objects:
   every fact.
 - If a merge cannot be made, the new value is appended, even past the cap, and
   nothing stored is cut.
-- Only text writes merge, through the server's diff engine. A text write that
-  runs without it on such a schema (`diff_engine=False`, or a server whose
-  default is off) raises `XmemoryAPIError` (HTTP 400, `VALIDATION_ERROR`);
-  through `write_async` the queued write fails, which `write_status` reports.
+- Only text writes merge, through the server's diff engine.
   `structured_mutations` replace the value as given.
 - Adding, changing or removing a `merge` is a metadata-only schema change.
 

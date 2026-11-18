@@ -731,8 +731,7 @@ class WriteScope(BaseModel):
     stricter about creates: it creates only records whose primary key the scope
     names, and such a record need not be stored yet, which is what makes
     "create or update exactly this record" expressible. A type without a primary
-    key cannot be named, so drop mode never creates one. The server runs drop
-    mode on its diff engine and refuses a write that turns the engine off.
+    key cannot be named, so drop mode never creates one.
     """
 
     objects: list[ScopeObject]
