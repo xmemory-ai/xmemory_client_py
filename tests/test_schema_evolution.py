@@ -175,6 +175,49 @@ def test_an_add_relation_without_fields_of_its_own_serializes_without_the_key(fi
     assert "fields" not in MigrationPlan(ops=[op]).model_dump(mode="json")["ops"][0]
 
 
+# Format and label keys, as an enhanced plan carries them: each must survive a parse and a dump,
+# since an op that lost its only change would be refused when sent back.
+_FORMAT_AND_LABEL_OPS = [
+    {"op_type": "change_field", "object_name": "Zelk", "field_name": "plix",
+     "new_format": {"brask": "v1"}},
+    {"op_type": "change_field", "object_name": "Zelk", "field_name": "plix", "clear_format": True},
+    {"op_type": "change_field", "object_name": "Zelk", "field_name": "dovra", "new_field_kind": "drem"},
+    {"op_type": "add_field", "object_name": "Zelk", "field_name": "quen", "field_type": "float",
+     "format": {"osk": "pell", "drun": 2}, "field_kind": "frell"},
+    {"op_type": "add_object", "name": "Morv", "primary_key": [],
+     "fields": [{"name": "tarsk", "type": "str", "format": {"vorn": True}, "field_kind": "frell"}],
+     "interval": True},
+    {"op_type": "change_object", "name": "Morv", "new_interval": False},
+    {"op_type": "add_relation", "name": "brindle", "objects": {"zelk": "Zelk", "morv": "Morv"},
+     "fields": [{"name": "vasp", "type": "str", "field_kind": "skarn"}]},
+]
+
+
+@pytest.mark.parametrize("wire", _FORMAT_AND_LABEL_OPS, ids=lambda wire: wire["op_type"])
+def test_a_format_or_label_key_survives_the_round_trip(wire):
+    dumped = MigrationPlan(ops=[parse_migration_op(wire)]).model_dump(mode="json")["ops"][0]
+    for key, value in wire.items():
+        if key == "fields":
+            assert [{k: f[k] for k in field} for f, field in zip(dumped[key], value)] == value
+        else:
+            assert dumped[key] == value
+    assert parse_migration_plan({"ops": [dumped]}).ops == [parse_migration_op(wire)]
+
+
+def test_format_and_label_keys_are_left_out_while_unset():
+    assert set(ChangeField(object_name="Zelk", field_name="dovra", new_description="x").model_dump(mode="json")).isdisjoint(
+        {"new_format", "clear_format", "new_field_kind"}
+    )
+    assert set(AddField(object_name="Zelk", field_name="x", field_type="str").model_dump(mode="json")).isdisjoint(
+        {"format", "field_kind"}
+    )
+    assert set(FieldSpec(name="x", type="str").model_dump(mode="json")).isdisjoint({"format", "field_kind"})
+    assert "interval" not in AddObject(name="Morv", fields=[FieldSpec(name="x", type="str")]).model_dump(mode="json")
+    assert "new_interval" not in ChangeObject(name="Morv", new_description="x").model_dump(mode="json")
+    # A stated `false` label is a value, not an unset key.
+    assert AddObject(name="Morv", fields=[], interval=False).model_dump(mode="json")["interval"] is False
+
+
 # ---------------------------------------------------------------------------
 # admin.enhance_schema
 # ---------------------------------------------------------------------------
@@ -353,6 +396,74 @@ def test_update_instance_schema_sends_a_relations_own_fields(httpx_mock, client)
     assert sent["migration_plan"]["ops"][0]["fields"] == [
         {"name": "title", "type": "str", "required": False, "description": None, "default": None, "enum": None}
     ]
+
+
+def test_an_enhanced_format_change_is_sent_back_as_the_server_wrote_it(httpx_mock, client):
+    change = {"op_type": "change_field", "object_name": "Zelk", "field_name": "plix",
+              "new_format": {"brask": "v1"}}
+    httpx_mock.post(f"/instances/{INSTANCE_ID}/schema/enhance").mock(
+        return_value=httpx.Response(200, json=_api_ok([{**_ENHANCED, "migration_plan": {"ops": [change]}}]))
+    )
+    route = httpx_mock.put(f"/instances/{INSTANCE_ID}/schema").mock(
+        return_value=httpx.Response(
+            200,
+            json=_api_ok(
+                [
+                    {
+                        "id": INSTANCE_ID,
+                        "cluster_id": CLUSTER_ID,
+                        "name": "zelks",
+                        "description": None,
+                        "data_schema": {"objects": {}},
+                        "migration_id": MIGRATION_ID,
+                        "prior_version": 3,
+                        "new_version": 4,
+                    }
+                ]
+            ),
+        )
+    )
+
+    enhanced = client.admin.enhance_instance_schema(INSTANCE_ID, "plix keeps its brask", "objects: {}")
+    client.admin.update_instance_schema(
+        INSTANCE_ID, "objects: {}", SchemaType.YML, migration_plan=enhanced.migration_plan
+    )
+
+    sent = json.loads(route.calls.last.request.read())["migration_plan"]["ops"][0]
+    assert sent["new_format"] == {"brask": "v1"}
+    assert "clear_format" not in sent and "new_field_kind" not in sent
+
+
+async def test_the_async_client_sends_a_label_change_as_written(httpx_mock, base_url):
+    route = httpx_mock.put(f"/instances/{INSTANCE_ID}/schema").mock(
+        return_value=httpx.Response(
+            200,
+            json=_api_ok(
+                [
+                    {
+                        "id": INSTANCE_ID,
+                        "cluster_id": CLUSTER_ID,
+                        "name": "zelks",
+                        "description": None,
+                        "data_schema": {"objects": {}},
+                        "migration_id": MIGRATION_ID,
+                        "prior_version": 3,
+                        "new_version": 4,
+                    }
+                ]
+            ),
+        )
+    )
+    plan = parse_migration_plan(
+        {"ops": [{"op_type": "change_field", "object_name": "Zelk", "field_name": "dovra", "new_field_kind": "drem"}]}
+    )
+
+    async with AsyncXmemoryClient(url=base_url, api_key="test-api-key") as async_client:
+        await async_client.admin.update_instance_schema(INSTANCE_ID, "objects: {}", SchemaType.YML, migration_plan=plan)
+
+    sent = json.loads(route.calls.last.request.read())["migration_plan"]["ops"][0]
+    assert sent["new_field_kind"] == "drem"
+    assert "new_format" not in sent and "clear_format" not in sent
 
 
 def test_update_instance_schema_back_compat_no_plan(httpx_mock, client):
