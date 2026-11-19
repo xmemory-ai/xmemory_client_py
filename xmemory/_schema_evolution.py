@@ -23,7 +23,14 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, Field, TypeAdapter
+from pydantic import (
+    BaseModel,
+    Field,
+    SerializerFunctionWrapHandler,
+    TypeAdapter,
+    field_validator,
+    model_serializer,
+)
 
 # ---------------------------------------------------------------------------
 # Shared literal/value types (mirror xmmodel.dto.migration_ops + xmm_description)
@@ -45,7 +52,7 @@ EnumValues = list[str | int | float | bool] | None
 
 
 class FieldSpec(BaseModel):
-    """Subset of an object field sufficient to add a field via a migration op."""
+    """Subset of an object's or a relation's field sufficient to add it via a migration op."""
 
     name: str
     type: FieldType
@@ -124,13 +131,36 @@ class ChangeField(BaseModel):
 
 
 class AddRelation(BaseModel):
+    """Add a relation. ``fields`` are the relation's own fields: values that belong
+    to one link, such as a person's title at a company. They are set when the
+    relation is added; no migration op changes them later. None of them may be
+    ``required``."""
+
     op_type: Literal["add_relation"] = "add_relation"
     name: str
     description: str | None = None
     objects: dict[str, str]
     keys: dict[str, list[str]] | None = None
     on_delete: dict[str, OnDelete] | None = None
+    fields: list[FieldSpec] | None = None
     should_backfill: bool = False
+
+    @field_validator("fields")
+    @classmethod
+    def _no_fields_are_none(cls, value: list[FieldSpec] | None) -> list[FieldSpec] | None:
+        # An empty list declares nothing, as on the server.
+        return value or None
+
+    @model_serializer(mode="wrap")
+    def _omit_unset_fields(self, handler: SerializerFunctionWrapHandler):
+        # Omit the key when there are none: a server that predates relation fields
+        # rejects unknown op keys, so a relation without them must serialize as before.
+        # No return annotation: one would replace the op's serialization JSON schema
+        # with a bare object.
+        data = handler(self)
+        if self.fields is None:
+            data.pop("fields", None)
+        return data
 
 
 class RemoveRelation(BaseModel):

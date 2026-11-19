@@ -213,6 +213,23 @@ result = inst.write(structured_mutations=[
     {"object_mutation": {"object_type": "person", "update": {"key": {"name": "Bob"}, "values": {"role": None}}}},  # None clears
 ])
 
+# A relation's own fields (see "Fields on a relation") go in its values. An update
+# names one link by every endpoint, in a later write than the one that created it:
+# a request that creates a link cannot also change it.
+from xmemory import RelationCreate, RelationEndpoint, RelationMutation, RelationUpdate
+
+bob_at_acme = [
+    RelationEndpoint(object_name="person", key={"name": "Bob"}),
+    RelationEndpoint(object_name="company", key={"name": "Acme"}),
+]
+inst.write(structured_mutations=[
+    ObjectMutation(object_type="company", create=ObjectCreate(key={"name": "Acme"})),
+    RelationMutation(relation_type="employment", create=RelationCreate(endpoints=bob_at_acme, values={"title": "designer"})),
+])
+inst.write(structured_mutations=[
+    RelationMutation(relation_type="employment", update=RelationUpdate(endpoints=bob_at_acme, values={"title": "lead designer"})),
+])
+
 # Extract (without persisting)
 result = inst.extract("Carol is a manager based in Berlin.")
 print(result.objects_extracted)
@@ -576,6 +593,7 @@ objects:
         type: str
         required: false
         description: job title or role
+    primary_key: [name]
   company:
     fields:
       name:
@@ -586,6 +604,7 @@ objects:
         type: str
         required: false
         description: industry or sector
+    primary_key: [name]
 relations:
   employment:
     objects:
@@ -601,6 +620,49 @@ relations:
 Field types: `str`, `int`, `float` and `bool`; `string`, `integer` and `boolean`
 are accepted as aliases. There is no date type: store dates and times in a `str`
 field, and say in its description how they are written.
+
+### Fields on a relation
+
+A relation can declare fields of its own: values that belong to one link rather
+than to either record, such as a person's title at a company. Only structured
+writes set them; a text write does not, so a value that will arrive in text is
+best kept on an object. They are shaped like an object's fields:
+
+```yaml
+relations:
+  employment:
+    objects:
+      person:
+        type: person
+        on_delete: cascade
+      company:
+        type: company
+        on_delete: cascade
+    keys:
+      one_link_per_pair: [person, company]
+    fields:
+      title:
+        type: str
+        description: the person's job title at this company
+      started_on:
+        type: str
+        description: the day the person started at this company, as YYYY-MM-DD
+    description: person works at company
+```
+
+- A relation's field is never `required`, since a link is made before its values
+  are known. It takes no `merge`, and it cannot share a name with one of the
+  relation's roles or with a name the server reserves. A schema that breaks this
+  is refused: an `XmemoryAPIError` with status 422, code `INVALID_INPUT` and
+  `details["error_code"] == "xmd_relation_field_invalid"`.
+- A relation's fields are declared when the relation is added, in the schema; a
+  migration plan's `AddRelation` carries the same fields. On a relation that
+  already exists, a schema update that adds or removes a field, or changes its
+  type, enum or default, is refused; its description can change.
+- A relation `create` takes their values in `values`, and an `update` names one
+  link by every endpoint and sets them (see the structured write example above).
+  A key over the relation's roles, as above, keeps the same two records to one
+  link, so an `update` by their endpoints never finds more than one.
 
 ### Mergeable text fields
 

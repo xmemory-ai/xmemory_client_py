@@ -2,6 +2,33 @@
 
 All notable changes to `xmemory-ai` are documented here.
 
+## 0.25.0
+
+Supports a relation's own fields in migration plans.
+
+### Added
+
+- `AddRelation.fields` — the relation's own fields, as a list of `FieldSpec`:
+  values that belong to one link, such as a person's title at a company. A
+  migration plan the server returns now keeps them when it is parsed
+  (`parse_migration_op`, `parse_migration_plan`, `EnhanceSchemaResult`) and
+  sends them back on `update_instance_schema` and `dry_run_migration`; before,
+  they were dropped at parse. An `AddRelation` without fields serializes as
+  before, with no `fields` key.
+
+### Changed
+
+- The README's "Schema format" gains "Fields on a relation": how a relation
+  declares them, what such a field may not be, and that they are set when the
+  relation is added. The structured write example sets one with a relation
+  `create`, and changes it with an `update` in a later write. The schema
+  example's objects declare their primary key, which addressing them by `key`
+  needs. `FieldSpec`'s docstring says it describes a relation's field too.
+- The structured mutation docstrings (`RelationEndpoint`, `ObjectCreate`,
+  `ObjectUpdate`, `ObjectDelete`, `RelationUpdate`, `RelationDelete`) name an
+  object by its primary-key fields and a link by its endpoints, as the server
+  accepts them.
+
 ## 0.24.4
 
 Documentation-only release: the write docs describe merges and drop mode as
