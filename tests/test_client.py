@@ -25,6 +25,7 @@ from xmemory import (
     ObjectDelete,
     ObjectMutation,
     ObjectUpdate,
+    RelationCreate,
     RelationDelete,
     RelationEndpoint,
     RelationMutation,
@@ -815,13 +816,13 @@ def test_mutation_models_require_exactly_one_op():
 def test_mutation_serialization_preserves_none_field_clears():
     mutation = ObjectMutation(
         object_type="person",
-        update=ObjectUpdate(key={"xuid": "x-1"}, values={"role": None}),
+        update=ObjectUpdate(key={"email": "a@x.io"}, values={"role": None}),
     )
 
     dumped = mutation.model_dump()
 
     assert dumped == {
-        "object_mutation": {"object_type": "person", "update": {"key": {"xuid": "x-1"}, "values": {"role": None}}},
+        "object_mutation": {"object_type": "person", "update": {"key": {"email": "a@x.io"}, "values": {"role": None}}},
     }
 
 
@@ -846,6 +847,71 @@ def test_relation_mutation_serialization():
             },
         },
     }
+
+
+def test_match_names_a_record_of_a_type_without_a_primary_key():
+    update = ObjectMutation(object_type="ObjA", update=ObjectUpdate(match={"f1": "v1"}, values={"f2": None}))
+    delete = ObjectMutation(object_type="ObjA", delete=ObjectDelete(match={"f1": "v1"}, allow_bulk=True))
+    endpoint = RelationEndpoint(object_name="r1", match={"f1": "v1"})
+
+    assert update.model_dump() == {
+        "object_mutation": {"object_type": "ObjA", "update": {"key": {}, "match": {"f1": "v1"}, "values": {"f2": None}}},
+    }
+    assert delete.model_dump() == {
+        "object_mutation": {"object_type": "ObjA", "delete": {"key": {}, "match": {"f1": "v1"}, "allow_bulk": True}},
+    }
+    assert endpoint.model_dump() == {"object_name": "r1", "key": {}, "match": {"f1": "v1"}}
+
+
+def test_match_and_allow_bulk_are_left_out_while_unset():
+    # A server that predates them rejects unknown keys, so a keyed mutation is sent as before.
+    assert ObjectUpdate(key={"f1": "v1"}, values={"f2": "v2"}).model_dump() == {"key": {"f1": "v1"}, "values": {"f2": "v2"}}
+    assert ObjectDelete(key={"f1": "v1"}).model_dump() == {"key": {"f1": "v1"}}
+    assert RelationEndpoint(object_name="r1", key={"f1": "v1"}).model_dump() == {"object_name": "r1", "key": {"f1": "v1"}}
+
+
+def test_a_record_is_named_by_key_or_by_match_and_allow_bulk_needs_match():
+    with pytest.raises(ValueError, match="not both"):
+        ObjectUpdate(key={"f1": "v1"}, match={"f1": "v1"}, values={"f2": "v2"})
+    with pytest.raises(ValueError, match="not both"):
+        ObjectDelete(key={"f1": "v1"}, match={"f1": "v1"})
+    with pytest.raises(ValueError, match="only with 'match'"):
+        ObjectDelete(key={"f1": "v1"}, allow_bulk=True)
+    with pytest.raises(ValueError, match="only with 'match'"):
+        ObjectUpdate(allow_bulk=True, values={"f2": "v2"})
+
+
+def test_instance_write_sends_match_as_written(httpx_mock, client):
+    write = httpx_mock.post(f"/instances/{INSTANCE_ID}/write").mock(
+        return_value=httpx.Response(200, json=_api_ok([{"write_id": "w-m1", "trace_id": "t-m1"}])),
+    )
+    write_async = httpx_mock.post(f"/instances/{INSTANCE_ID}/write_async").mock(
+        return_value=httpx.Response(200, json=_api_ok([{"write_id": "w-m2"}])),
+    )
+    inst = client.instance(INSTANCE_ID)
+
+    inst.write(structured_mutations=[
+        ObjectMutation(object_type="ObjA", update=ObjectUpdate(match={"f1": "v1"}, values={"f2": "v2"})),
+        RelationMutation(
+            relation_type="RelA",
+            create=RelationCreate(endpoints=[
+                RelationEndpoint(object_name="r1", match={"f1": "v1"}),
+                RelationEndpoint(object_name="r2", key={"f3": "v3"}),
+            ]),
+        ),
+    ])
+    inst.write_async(structured_mutations=[
+        ObjectMutation(object_type="ObjA", delete=ObjectDelete(match={"f1": "v1"}, allow_bulk=True)),
+    ])
+
+    sent = json.loads(write.calls.last.request.content)["structured_mutations"]
+    assert sent[0]["object_mutation"]["update"]["match"] == {"f1": "v1"}
+    assert sent[1]["relation_mutation"]["create"]["endpoints"] == [
+        {"object_name": "r1", "key": {}, "match": {"f1": "v1"}},
+        {"object_name": "r2", "key": {"f3": "v3"}},
+    ]
+    sent_async = json.loads(write_async.calls.last.request.content)["structured_mutations"]
+    assert sent_async[0]["object_mutation"]["delete"] == {"key": {}, "match": {"f1": "v1"}, "allow_bulk": True}
 
 
 def test_instance_write_status(httpx_mock, client):

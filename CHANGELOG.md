@@ -2,6 +2,27 @@
 
 All notable changes to `xmemory-ai` are documented here.
 
+## 0.27.0
+
+Names a record of a type without a primary key in structured writes.
+
+### Added
+
+- `ObjectUpdate.match` and `allow_bulk`, `ObjectDelete.match` and `allow_bulk`,
+  and `RelationEndpoint.match`: for a type declared with `primary_key: []`,
+  `match` names the record by field values it holds, compared as keys are, in
+  place of `key`. It must single out one record unless `allow_bulk=True`, which
+  acts on every record it matches, up to 100 records per request. Each key is
+  left out of the request while unset, so a keyed mutation is sent as before.
+- `ObjectUpdate` and `ObjectDelete` refuse, with a `ValueError` when built, a
+  record named by both `key` and `match`, and `allow_bulk` without `match`.
+
+### Changed
+
+- The README shows an update and a delete by `match`, and says how a record of
+  such a type is created: an empty `key` and at least one non-null value.
+- `ObjectCreate`'s docstring says the same.
+
 ## 0.26.0
 
 Migration plans keep a field's format and the labels on fields and objects.

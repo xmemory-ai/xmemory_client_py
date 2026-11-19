@@ -231,6 +231,19 @@ inst.write(structured_mutations=[
     RelationMutation(relation_type="employment", update=RelationUpdate(endpoints=bob_at_acme, values={"title": "lead designer"})),
 ])
 
+# A type declared with primary_key: [] has no key. Create a record with an empty
+# key and at least one non-null value; name it later by match, field values it
+# holds (compared as keys are), which must single out one record unless
+# allow_bulk=True acts on every record it matches, up to 100 records per request.
+# A relation endpoint of such a type takes match in place of key too. ObjectUpdate
+# and ObjectDelete refuse key with match, and allow_bulk without match.
+from xmemory import ObjectDelete, ObjectUpdate
+
+inst.write(structured_mutations=[
+    ObjectMutation(object_type="item", update=ObjectUpdate(match={"label": "A"}, values={"status": "done"})),
+    ObjectMutation(object_type="item", delete=ObjectDelete(match={"status": "void"}, allow_bulk=True)),
+])
+
 # Extract (without persisting)
 result = inst.extract("Carol is a manager based in Berlin.")
 print(result.objects_extracted)

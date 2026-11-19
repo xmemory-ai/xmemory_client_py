@@ -21,16 +21,11 @@ those into typed ops when you need them.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated, Any, ClassVar, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import (
-    BaseModel,
-    Field,
-    SerializerFunctionWrapHandler,
-    TypeAdapter,
-    field_validator,
-    model_serializer,
-)
+from pydantic import BaseModel, Field, TypeAdapter, field_validator
+
+from xmemory._omit_unset import OmitsUnsetKeys as _OmitsUnsetKeys
 
 # ---------------------------------------------------------------------------
 # Shared literal/value types (mirror xmmodel.dto.migration_ops + xmm_description)
@@ -53,25 +48,6 @@ FieldKind = str
 # ---------------------------------------------------------------------------
 # Migration ops — discriminated union on ``op_type``.
 # ---------------------------------------------------------------------------
-
-
-class _OmitsUnsetKeys(BaseModel):
-    """An op whose newer keys are left out of the dump while unset: a server that
-    predates them rejects unknown op keys, so an op that uses none of them must
-    serialize as before."""
-
-    # Each such key, with the value that means unset: ``None``, or ``False`` for a flag.
-    _omitted_while_unset: ClassVar[dict[str, None | bool]] = {}
-
-    @model_serializer(mode="wrap")
-    def _omit_unset_keys(self, handler: SerializerFunctionWrapHandler):
-        # No return annotation: one would replace the op's serialization JSON schema
-        # with a bare object.
-        data = handler(self)
-        for name, unset in self._omitted_while_unset.items():
-            if getattr(self, name) is unset:
-                data.pop(name, None)
-        return data
 
 
 class FieldSpec(_OmitsUnsetKeys):

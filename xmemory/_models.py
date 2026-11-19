@@ -6,6 +6,8 @@ from typing import Any, Literal, Union
 
 from pydantic import BaseModel, Field, model_serializer, model_validator
 
+from xmemory._omit_unset import OmitsUnsetKeys
+
 
 # ---------------------------------------------------------------------------
 # Enums
@@ -774,38 +776,78 @@ class _ReadRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-class RelationEndpoint(BaseModel):
+class RelationEndpoint(OmitsUnsetKeys):
     """One endpoint of a relation mutation.
 
     ``object_name`` is the relation role name from the instance schema; ``key``
     identifies the endpoint object by its user-defined primary-key fields
-    (field -> value).
+    (field -> value). For a type without a primary key, ``match`` names it
+    instead: field values the record holds, which must single out one record.
     """
+
+    _omitted_while_unset = {"match": {}}
 
     object_name: str
     key: dict[str, Any] = {}
+    match: dict[str, Any] = {}
 
 
 class ObjectCreate(BaseModel):
     """Create an object: ``key`` holds the user primary-key fields, ``values``
-    the remaining field values."""
+    the remaining field values. For a type without a primary key, ``key`` is
+    empty, ``values`` holds at least one non-null value, and each create adds a
+    new record."""
 
     key: dict[str, Any] = {}
     values: dict[str, Any] = {}
 
 
-class ObjectUpdate(BaseModel):
-    """Update an object identified by ``key`` (its primary-key fields). A
-    ``None`` value in ``values`` clears that field."""
+def _check_target(model: ObjectUpdate | ObjectDelete) -> None:
+    """Refuse what the server refuses: a record named by ``key`` and ``match`` at
+    once, or ``allow_bulk`` without ``match``."""
+    if model.key and model.match:
+        raise ValueError("Name the record by 'key' or by 'match', not both.")
+    if model.allow_bulk and not model.match:
+        raise ValueError("'allow_bulk' applies only with 'match'.")
+
+
+class ObjectUpdate(OmitsUnsetKeys):
+    """Update an object identified by ``key`` (its primary-key fields), or, for a
+    type without a primary key, by ``match``: field values the record holds,
+    compared as keys are. ``match`` must single out one record unless
+    ``allow_bulk=True``, which updates every record it matches, up to 100 records
+    per request. A ``None`` value in ``values`` clears that field."""
+
+    _omitted_while_unset = {"match": {}, "allow_bulk": False}
 
     key: dict[str, Any] = {}
+    match: dict[str, Any] = {}
+    allow_bulk: bool = False
     values: dict[str, Any] = {}
 
+    @model_validator(mode="after")
+    def _one_target(self) -> ObjectUpdate:
+        _check_target(self)
+        return self
 
-class ObjectDelete(BaseModel):
-    """Delete the object identified by ``key`` (its primary-key fields)."""
+
+class ObjectDelete(OmitsUnsetKeys):
+    """Delete the object identified by ``key`` (its primary-key fields), or, for a
+    type without a primary key, by ``match``: field values the record holds,
+    compared as keys are. ``match`` must single out one record unless
+    ``allow_bulk=True``, which deletes every record it matches, up to 100 records
+    per request."""
+
+    _omitted_while_unset = {"match": {}, "allow_bulk": False}
 
     key: dict[str, Any] = {}
+    match: dict[str, Any] = {}
+    allow_bulk: bool = False
+
+    @model_validator(mode="after")
+    def _one_target(self) -> ObjectDelete:
+        _check_target(self)
+        return self
 
 
 class RelationCreate(BaseModel):
