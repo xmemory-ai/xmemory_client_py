@@ -125,6 +125,56 @@ def test_parse_migration_op_discriminates():
     assert op.field_name == "x"
 
 
+def test_an_add_relation_keeps_the_relations_own_fields():
+    wire = {
+        "op_type": "add_relation",
+        "name": "employment",
+        "objects": {"person": "person", "company": "company"},
+        "fields": [
+            {"name": "title", "type": "str", "description": "job title at this company"},
+            {"name": "started_on", "type": "str"},
+        ],
+    }
+    op = parse_migration_op(wire)
+    assert isinstance(op, AddRelation)
+    assert [f.name for f in op.fields or []] == ["title", "started_on"]
+    assert op.fields is not None and op.fields[0].description == "job title at this company"
+
+    dumped = MigrationPlan(ops=[op]).model_dump(mode="json")
+    assert [f["name"] for f in dumped["ops"][0]["fields"]] == ["title", "started_on"]
+    assert parse_migration_plan(dumped).ops == [op]
+
+
+def test_an_add_relation_is_sent_back_without_a_key_this_client_does_not_model():
+    # A server may add op keys a client does not know yet; sending one back could be refused,
+    # so a parsed op carries only the keys modelled here.
+    op = parse_migration_op(
+        {
+            "op_type": "add_relation",
+            "name": "employment",
+            "objects": {"person": "person", "company": "company"},
+            "fields": [{"name": "title", "type": "str"}],
+            "a_later_option": {"name": "title"},
+        }
+    )
+    dumped = MigrationPlan(ops=[op]).model_dump(mode="json")["ops"][0]
+    assert "a_later_option" not in dumped
+    assert [f["name"] for f in dumped["fields"]] == ["title"]
+
+
+def test_add_relation_serialization_json_schema_keeps_its_shape():
+    schema = AddRelation.model_json_schema(mode="serialization")
+    assert {"name", "objects", "fields"} <= set(schema["properties"])
+
+
+@pytest.mark.parametrize("fields", [None, []])
+def test_an_add_relation_without_fields_of_its_own_serializes_without_the_key(fields):
+    op = AddRelation(name="Knows", objects={"a": "Contact", "b": "Contact"}, fields=fields)
+    assert op.fields is None
+    assert "fields" not in op.model_dump(mode="json")
+    assert "fields" not in MigrationPlan(ops=[op]).model_dump(mode="json")["ops"][0]
+
+
 # ---------------------------------------------------------------------------
 # admin.enhance_schema
 # ---------------------------------------------------------------------------
@@ -149,6 +199,32 @@ def test_enhance_schema_parses_migration_plan(httpx_mock, client):
     assert isinstance(result.migration_plan.ops[0], RenameField)
     assert result.summary == "rename a to b"
     assert result.warnings[0]["message"] == "heads up"
+
+
+def test_enhance_schema_keeps_a_new_relations_own_fields(httpx_mock, client):
+    add_employment = {
+        "op_type": "add_relation",
+        "name": "employment",
+        "objects": {"person": "person", "company": "company"},
+        "fields": [{"name": "title", "type": "str"}],
+    }
+    payload = {
+        "data_schema": {"objects": {}},
+        "migration_plan": {"ops": [add_employment]},
+        "summary": "add employment",
+        "warnings": [],
+        "repair_log": [],
+    }
+    httpx_mock.post(f"/clusters/{CLUSTER_ID}/instances/generate_schema").mock(
+        return_value=httpx.Response(200, json=_api_ok([payload]))
+    )
+
+    result = client.admin.enhance_schema(CLUSTER_ID, "add employment", "objects: {}")
+
+    assert result.migration_plan is not None
+    op = result.migration_plan.ops[0]
+    assert isinstance(op, AddRelation)
+    assert [f.name for f in op.fields or []] == ["title"]
 
 
 # ---------------------------------------------------------------------------
@@ -239,6 +315,44 @@ def test_update_instance_schema_sends_plan_and_destructive(httpx_mock, client):
     body = route.calls.last.request.read().decode()
     assert "remove_field" in body
     assert '"confirm_destructive":true' in body.replace(" ", "")
+
+
+def test_update_instance_schema_sends_a_relations_own_fields(httpx_mock, client):
+    route = httpx_mock.put(f"/instances/{INSTANCE_ID}/schema").mock(
+        return_value=httpx.Response(
+            200,
+            json=_api_ok(
+                [
+                    {
+                        "id": INSTANCE_ID,
+                        "cluster_id": CLUSTER_ID,
+                        "name": "contacts",
+                        "description": None,
+                        "data_schema": {"objects": {}},
+                        "migration_id": MIGRATION_ID,
+                        "prior_version": 3,
+                        "new_version": 4,
+                    }
+                ]
+            ),
+        )
+    )
+
+    plan = MigrationPlan(
+        ops=[
+            AddRelation(
+                name="employment",
+                objects={"person": "person", "company": "company"},
+                fields=[FieldSpec(name="title", type="str")],
+            )
+        ]
+    )
+    client.admin.update_instance_schema(INSTANCE_ID, "objects: {}", SchemaType.YML, migration_plan=plan)
+
+    sent = json.loads(route.calls.last.request.read())
+    assert sent["migration_plan"]["ops"][0]["fields"] == [
+        {"name": "title", "type": "str", "required": False, "description": None, "default": None, "enum": None}
+    ]
 
 
 def test_update_instance_schema_back_compat_no_plan(httpx_mock, client):

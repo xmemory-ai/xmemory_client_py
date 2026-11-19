@@ -779,7 +779,7 @@ class RelationEndpoint(BaseModel):
 
     ``object_name`` is the relation role name from the instance schema; ``key``
     identifies the endpoint object by its user-defined primary-key fields
-    (field -> value) or ``{"xuid": ...}``.
+    (field -> value).
     """
 
     object_name: str
@@ -787,23 +787,23 @@ class RelationEndpoint(BaseModel):
 
 
 class ObjectCreate(BaseModel):
-    """Create an object: ``key`` holds the user primary-key fields (no ``xuid`` —
-    it is generated server-side), ``values`` the remaining field values."""
+    """Create an object: ``key`` holds the user primary-key fields, ``values``
+    the remaining field values."""
 
     key: dict[str, Any] = {}
     values: dict[str, Any] = {}
 
 
 class ObjectUpdate(BaseModel):
-    """Update an object identified by ``key`` (primary-key fields or
-    ``{"xuid": ...}``). A ``None`` value in ``values`` clears that field."""
+    """Update an object identified by ``key`` (its primary-key fields). A
+    ``None`` value in ``values`` clears that field."""
 
     key: dict[str, Any] = {}
     values: dict[str, Any] = {}
 
 
 class ObjectDelete(BaseModel):
-    """Delete the object identified by ``key`` (primary-key fields or ``{"xuid": ...}``)."""
+    """Delete the object identified by ``key`` (its primary-key fields)."""
 
     key: dict[str, Any] = {}
 
@@ -816,9 +816,9 @@ class RelationCreate(BaseModel):
 
 
 class RelationUpdate(BaseModel):
-    """Update a relation's own fields. Address it by ``endpoints``, or by
-    ``key={"xuid": ...}`` when endpoints are ambiguous. A ``None`` value in
-    ``values`` clears that field."""
+    """Update a relation's own fields on one link, named by its ``endpoints``
+    (one per relation role); endpoints that match several links are refused.
+    A ``None`` value in ``values`` clears that field."""
 
     key: dict[str, Any] = {}
     endpoints: list[RelationEndpoint] = []
@@ -826,9 +826,8 @@ class RelationUpdate(BaseModel):
 
 
 class RelationDelete(BaseModel):
-    """Delete relation(s) matched by ``endpoints`` (a subset is allowed) or by
-    ``key={"xuid": ...}``. Deleting more than one matched row requires
-    ``allow_bulk_delete=True``."""
+    """Delete the links matched by ``endpoints`` (a subset is allowed).
+    Deleting more than one matched link requires ``allow_bulk_delete=True``."""
 
     key: dict[str, Any] = {}
     endpoints: list[RelationEndpoint] = []
