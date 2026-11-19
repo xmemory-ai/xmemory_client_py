@@ -2,6 +2,32 @@
 
 All notable changes to `xmemory-ai` are documented here.
 
+## 0.26.0
+
+Migration plans keep a field's format and the labels on fields and objects.
+
+### Added
+
+- `FieldSpec.format` and `field_kind`, `AddField.format` and `field_kind`,
+  `ChangeField.new_format`, `clear_format` and `new_field_kind`,
+  `AddObject.interval` and `ChangeObject.new_interval`: the keys a migration
+  plan the server returns may carry for a field's declared format and for the
+  labels on fields and objects. A plan now keeps them when it is parsed and
+  sends them back on `update_instance_schema` and `dry_run_migration`. Before,
+  they were dropped at parse, so the plan sent back lacked them; one whose only
+  change to a field was its format or label was refused. Each key is left out
+  of the request while unset.
+- `AddRelation`'s docstring says a relation's field declares no format.
+
+### Changed
+
+- The README's "Schema format" says what the labels on fields and objects are:
+  hints xmemory sets, kept when you state one that fits, with a link to the XMD
+  guide for what each value means.
+- "Fields on a relation" says such a field takes no `format` either, and that a
+  field that is not well formed gets its own validation error. The relation
+  example says it continues the one above it.
+
 ## 0.25.0
 
 Supports a relation's own fields in migration plans.
@@ -26,8 +52,7 @@ Supports a relation's own fields in migration plans.
   needs. `FieldSpec`'s docstring says it describes a relation's field too.
 - The structured mutation docstrings (`RelationEndpoint`, `ObjectCreate`,
   `ObjectUpdate`, `ObjectDelete`, `RelationUpdate`, `RelationDelete`) name an
-  object by its primary-key fields and a link by its endpoints, as the server
-  accepts them.
+  object by its primary-key fields and a link by its endpoints.
 
 ## 0.24.4
 

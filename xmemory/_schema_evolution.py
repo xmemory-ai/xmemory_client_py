@@ -21,7 +21,7 @@ those into typed ops when you need them.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, ClassVar, Literal
 
 from pydantic import (
     BaseModel,
@@ -44,6 +44,10 @@ MigrationSource = Literal["direct", "suggestion_engine"]
 
 DefaultValue = str | int | float | bool | None
 EnumValues = list[str | int | float | bool] | None
+# A field's declared format and its label, as the server holds them. Kept loose so a
+# value a newer server adds still reads.
+FieldFormat = dict[str, Any]
+FieldKind = str
 
 
 # ---------------------------------------------------------------------------
@@ -51,8 +55,29 @@ EnumValues = list[str | int | float | bool] | None
 # ---------------------------------------------------------------------------
 
 
-class FieldSpec(BaseModel):
+class _OmitsUnsetKeys(BaseModel):
+    """An op whose newer keys are left out of the dump while unset: a server that
+    predates them rejects unknown op keys, so an op that uses none of them must
+    serialize as before."""
+
+    # Each such key, with the value that means unset: ``None``, or ``False`` for a flag.
+    _omitted_while_unset: ClassVar[dict[str, None | bool]] = {}
+
+    @model_serializer(mode="wrap")
+    def _omit_unset_keys(self, handler: SerializerFunctionWrapHandler):
+        # No return annotation: one would replace the op's serialization JSON schema
+        # with a bare object.
+        data = handler(self)
+        for name, unset in self._omitted_while_unset.items():
+            if getattr(self, name) is unset:
+                data.pop(name, None)
+        return data
+
+
+class FieldSpec(_OmitsUnsetKeys):
     """Subset of an object's or a relation's field sufficient to add it via a migration op."""
+
+    _omitted_while_unset = {"format": None, "field_kind": None}
 
     name: str
     type: FieldType
@@ -60,15 +85,20 @@ class FieldSpec(BaseModel):
     description: str | None = None
     default: DefaultValue = None
     enum: EnumValues = None
+    format: FieldFormat | None = None
+    field_kind: FieldKind | None = None
 
 
-class AddObject(BaseModel):
+class AddObject(_OmitsUnsetKeys):
+    _omitted_while_unset = {"interval": None}
+
     op_type: Literal["add_object"] = "add_object"
     name: str
     description: str | None = None
     primary_key: list[str] = []
     fields: list[FieldSpec] = []
     should_backfill: bool = False
+    interval: bool | None = None
 
 
 class RemoveObject(BaseModel):
@@ -82,14 +112,19 @@ class RenameObject(BaseModel):
     new_name: str
 
 
-class ChangeObject(BaseModel):
+class ChangeObject(_OmitsUnsetKeys):
+    _omitted_while_unset = {"new_interval": None}
+
     op_type: Literal["change_object"] = "change_object"
     name: str
     new_primary_key: list[str] | None = None
     new_description: str | None = None
+    new_interval: bool | None = None
 
 
-class AddField(BaseModel):
+class AddField(_OmitsUnsetKeys):
+    _omitted_while_unset = {"format": None, "field_kind": None}
+
     op_type: Literal["add_field"] = "add_field"
     object_name: str
     field_name: str
@@ -99,6 +134,8 @@ class AddField(BaseModel):
     default: DefaultValue = None
     enum: EnumValues = None
     should_backfill: bool = False
+    format: FieldFormat | None = None
+    field_kind: FieldKind | None = None
 
 
 class RemoveField(BaseModel):
@@ -114,7 +151,12 @@ class RenameField(BaseModel):
     new_name: str
 
 
-class ChangeField(BaseModel):
+class ChangeField(_OmitsUnsetKeys):
+    """Change a field. ``new_format`` sets or replaces its declared format and
+    ``clear_format`` removes it (never both); ``new_field_kind`` sets its label."""
+
+    _omitted_while_unset = {"new_format": None, "clear_format": False, "new_field_kind": None}
+
     op_type: Literal["change_field"] = "change_field"
     object_name: str
     field_name: str
@@ -128,13 +170,18 @@ class ChangeField(BaseModel):
     cast_strategy: CastStrategy | None = None
     using_expression: str | None = None
     confirm_data_loss: bool = False
+    new_format: FieldFormat | None = None
+    clear_format: bool = False
+    new_field_kind: FieldKind | None = None
 
 
-class AddRelation(BaseModel):
+class AddRelation(_OmitsUnsetKeys):
     """Add a relation. ``fields`` are the relation's own fields: values that belong
     to one link, such as a person's title at a company. They are set when the
     relation is added; no migration op changes them later. None of them may be
-    ``required``."""
+    ``required`` or declare a format."""
+
+    _omitted_while_unset = {"fields": None}
 
     op_type: Literal["add_relation"] = "add_relation"
     name: str
@@ -150,17 +197,6 @@ class AddRelation(BaseModel):
     def _no_fields_are_none(cls, value: list[FieldSpec] | None) -> list[FieldSpec] | None:
         # An empty list declares nothing, as on the server.
         return value or None
-
-    @model_serializer(mode="wrap")
-    def _omit_unset_fields(self, handler: SerializerFunctionWrapHandler):
-        # Omit the key when there are none: a server that predates relation fields
-        # rejects unknown op keys, so a relation without them must serialize as before.
-        # No return annotation: one would replace the op's serialization JSON schema
-        # with a bare object.
-        data = handler(self)
-        if self.fields is None:
-            data.pop("fields", None)
-        return data
 
 
 class RemoveRelation(BaseModel):

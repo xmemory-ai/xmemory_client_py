@@ -213,9 +213,10 @@ result = inst.write(structured_mutations=[
     {"object_mutation": {"object_type": "person", "update": {"key": {"name": "Bob"}, "values": {"role": None}}}},  # None clears
 ])
 
-# A relation's own fields (see "Fields on a relation") go in its values. An update
-# names one link by every endpoint, in a later write than the one that created it:
-# a request that creates a link cannot also change it.
+# Continuing the example above, where Bob was created: a relation's own fields (see
+# "Fields on a relation") go in its values. An update names one link by every
+# endpoint, in a later write than the one that created it: a request that creates a
+# link cannot also change it.
 from xmemory import RelationCreate, RelationEndpoint, RelationMutation, RelationUpdate
 
 bob_at_acme = [
@@ -621,6 +622,14 @@ Field types: `str`, `int`, `float` and `bool`; `string`, `integer` and `boolean`
 are accepted as aliases. There is no date type: store dates and times in a `str`
 field, and say in its description how they are written.
 
+Fields and objects may also carry labels that xmemory sets: `field_kind` on a
+field (`free_text`, `state` or `value`) and `interval` on an object (`true` or
+`false`). They are hints about the data that help xmemory handle writes, not
+identifiers or constraints. A label you state is kept, as long as it fits the
+field's other settings; one you leave out keeps its current value. See the XMD
+guide's [Labels](https://xmemory.ai/xmd/#labels) section for what each value
+means.
+
 ### Fields on a relation
 
 A relation can declare fields of its own: values that belong to one link rather
@@ -651,10 +660,11 @@ relations:
 ```
 
 - A relation's field is never `required`, since a link is made before its values
-  are known. It takes no `merge`, and it cannot share a name with one of the
-  relation's roles or with a name the server reserves. A schema that breaks this
-  is refused: an `XmemoryAPIError` with status 422, code `INVALID_INPUT` and
-  `details["error_code"] == "xmd_relation_field_invalid"`.
+  are known. It takes no `merge` or `format`, and it cannot share a name with one
+  of the relation's roles or with a name the server reserves. A schema that breaks
+  this is refused: an `XmemoryAPIError` with status 422, code `INVALID_INPUT` and
+  `details["error_code"] == "xmd_relation_field_invalid"` (a field that is not
+  well formed gets its own validation error instead).
 - A relation's fields are declared when the relation is added, in the schema; a
   migration plan's `AddRelation` carries the same fields. On a relation that
   already exists, a schema update that adds or removes a field, or changes its
