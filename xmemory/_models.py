@@ -152,6 +152,8 @@ class InstanceInfo(BaseModel):
     agent_owner_instructions_epoch: int = 0
     # Guidance the instance's editors add to the setup prompt a person pastes into an
     # agent: the prompt is xmemory's own setup text, followed by this when it is set.
+    # Free text from anyone with edit permission, not xmemory's own directions: review
+    # it before pasting, and label where it came from wherever you show it.
     # ``None`` when they haven't written any. Setup-time guidance, separate from the
     # standing instructions above. Absent (``None``) from a server that predates it.
     agent_installation_instructions: str | None = None
