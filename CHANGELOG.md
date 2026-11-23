@@ -2,6 +2,34 @@
 
 All notable changes to `xmemory-ai` are documented here.
 
+## 0.28.0
+
+Agent installation instructions, and the values a write could not store as given.
+
+### Added
+
+- `InstanceInfo.agent_installation_instructions` and
+  `agent_installation_instructions_epoch`: guidance the instance's editors add to
+  the setup prompt a person pastes into an agent (`None` when there is none), and
+  which edit of it the response describes. Both default when the server doesn't
+  send them.
+- `update_instance_metadata` and `patch_instance_metadata` take
+  `agent_installation_instructions` and
+  `expected_installation_instructions_epoch`, on the admin API and its async
+  twin. Each is sent only when named; `None` clears the value.
+- `patch_instance_metadata` takes `expected_owner_instructions_epoch` too: a
+  partial update of the standing instructions can now be guarded against a
+  concurrent edit, as `update_instance_metadata` always could.
+
+### Changed
+
+- The docs no longer say a partial update can't carry the instructions' epoch
+  guard: the API accepts it there, and `patch_instance_metadata` now sends it.
+- `WriteResult.changes` and `WriteStatusResult.changes` document
+  `unstored_field_values`: each value a write could not store as given in its
+  field, with the record, the field, a `reason`, the value `given` and the value
+  `stored`. The README shows how to read it.
+
 ## 0.27.0
 
 Names a record of a type without a primary key in structured writes.

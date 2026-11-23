@@ -150,6 +150,14 @@ class InstanceInfo(BaseModel):
     # ``expected_owner_instructions_epoch`` when saving an edit composed from it, and
     # a save that raced someone else's is refused instead of silently overwriting.
     agent_owner_instructions_epoch: int = 0
+    # Guidance the instance's editors add to the setup prompt a person pastes into an
+    # agent: the prompt is xmemory's own setup text, followed by this when it is set.
+    # ``None`` when they haven't written any. Setup-time guidance, separate from the
+    # standing instructions above. Absent (``None``) from a server that predates it.
+    agent_installation_instructions: str | None = None
+    # Which edit of the installation instructions this response describes: pass it
+    # back as ``expected_installation_instructions_epoch``, as for the field above.
+    agent_installation_instructions_epoch: int = 0
     # Schema-evolution fields — populated only by ``update_instance_schema``
     # when the call ran a (non-no-op) migration. Absent (``None``) on
     # responses from endpoints that don't migrate (get/create/list).
@@ -380,6 +388,14 @@ class WriteResult(BaseModel):
     # ``"new"``). Advisory: the write landed either way. Omitted when there is no such entry and by a
     # server that predates it; an absent key does not prove the texts agreed, since a merge that failed,
     # appended, or left the stored text unchanged reports none.
+    # Also ``unstored_field_values``: values the text gave that their field's type could not hold as given, in a
+    # field with no declared format, one entry each, with ``object_type_name``, ``identity`` (as the other entries
+    # name the record), ``field``, ``reason`` (``"not_a_number"``: a number field left empty; ``"truncated"``: a
+    # whole-number field given a fraction; ``"not_a_boolean"``: a yes/no field given anything else; a newer server
+    # may add a reason, so treat it as a plain string), ``given`` (the value as the text gave it, text cut to 300
+    # characters) and ``stored`` (what the field holds for it; ``None`` when nothing was stored). Only records the
+    # write wrote are listed. Advisory: the write stored what it stored either way. Omitted when there is none and
+    # by a server that predates it.
     # Also ``orphaned_records``: the stored records a delete in the write left with no link of a relation they
     # had one of, one per record and relation, with ``object_type_name``, ``identity`` and ``relation`` (the
     # relation's class name: XMD ``works_at`` comes back as ``WorksAt``).
@@ -649,11 +665,13 @@ class _OmitUnsetRequest(BaseModel):
 
 class _UpdateMetadataRequest(_OmitUnsetRequest):
     # ``name`` and ``description`` are required by the endpoint and always passed,
-    # so they are always sent; the two below appear only when the caller names them.
+    # so they are always sent; the ones below appear only when the caller names them.
     name: str
     description: str | None
     agent_owner_instructions: str | None | UnsetType = UNSET
     expected_owner_instructions_epoch: int | UnsetType = UNSET
+    agent_installation_instructions: str | None | UnsetType = UNSET
+    expected_installation_instructions_epoch: int | UnsetType = UNSET
 
 
 class _PatchMetadataRequest(_OmitUnsetRequest):
@@ -663,6 +681,9 @@ class _PatchMetadataRequest(_OmitUnsetRequest):
     agent_default_binding_tier: str | None | UnsetType = UNSET
     agent_engagement_hints: list[str] | None | UnsetType = UNSET
     agent_owner_instructions: str | None | UnsetType = UNSET
+    expected_owner_instructions_epoch: int | UnsetType = UNSET
+    agent_installation_instructions: str | None | UnsetType = UNSET
+    expected_installation_instructions_epoch: int | UnsetType = UNSET
 
 
 class _GenerateSchemaRequest(BaseModel):

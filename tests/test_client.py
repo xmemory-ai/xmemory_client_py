@@ -2414,3 +2414,248 @@ def test_star_import_does_not_bind_version(monkeypatch) -> None:
     exec("from xmemory import *", namespace)  # noqa: S102
 
     assert namespace["__version__"] == "consumer-owned"
+
+
+# ---------------------------------------------------------------------------
+# A read answer with and without extra keys
+# ---------------------------------------------------------------------------
+
+
+def test_a_read_answer_without_extra_keys_parses_the_same(httpx_mock, client):
+    """A read answer without extra keys parses the same."""
+    httpx_mock.post(f"/instances/{INSTANCE_ID}/read").mock(return_value=httpx.Response(200, json=_api_ok([
+        {"trace_id": "r-1", "reader_result": {"answer": "An engineer"}},
+    ])))
+
+    resp = client.instance(INSTANCE_ID).read("Who is Bob?")
+
+    assert resp.trace_id == "r-1"
+    assert resp.reader_result == {"answer": "An engineer"}
+
+
+def test_a_read_answer_with_extra_keys_parses_the_same(httpx_mock, client):
+    """A read answer with extra keys parses the same."""
+    httpx_mock.post(f"/instances/{INSTANCE_ID}/read").mock(return_value=httpx.Response(200, json=_api_ok([
+        {
+            "trace_id": "r-1",
+            "reader_result": {"answer": "An engineer"},
+            "extra_note": None,
+            "extra_items": [{"name": "first"}],
+            "extra_steps": [{"step": 1}],
+        },
+    ])))
+
+    resp = client.instance(INSTANCE_ID).read("Who is Bob?")
+
+    assert resp.trace_id == "r-1"
+    assert resp.reader_result == {"answer": "An engineer"}
+
+
+async def test_async_read_answer_with_extra_keys_parses_the_same(httpx_mock, async_client):
+    httpx_mock.post(f"/instances/{INSTANCE_ID}/read").mock(return_value=httpx.Response(200, json=_api_ok([
+        {"trace_id": "r-1", "reader_result": {"answer": "An engineer"}, "extra_note": None},
+    ])))
+
+    resp = await async_client.instance(INSTANCE_ID).read("Who is Bob?")
+
+    assert resp.reader_result == {"answer": "An engineer"}
+
+
+# ---------------------------------------------------------------------------
+# Values a write could not store as given
+# ---------------------------------------------------------------------------
+
+_UNSTORED = {
+    "object_type_name": "Order",
+    "identity": "number='17'",
+    "field": "quantity",
+    "reason": "not_a_number",
+    "given": "about twenty",
+    "stored": None,
+}
+
+
+def test_a_write_reports_the_values_it_could_not_store_as_given(httpx_mock, client):
+    httpx_mock.post(f"/instances/{INSTANCE_ID}/write").mock(return_value=httpx.Response(200, json=_api_ok([
+        {
+            "write_id": "w-1",
+            "changes": {
+                "created": {"objects": [], "relations": []},
+                "updated": [],
+                "deleted": {"objects": [], "relations": []},
+                "unstored_field_values": [_UNSTORED],
+            },
+        },
+    ])))
+
+    resp = client.instance(INSTANCE_ID).write("Order 17 is for about twenty units.")
+
+    assert resp.changes["unstored_field_values"] == [_UNSTORED]
+
+
+def test_write_status_reports_the_values_it_could_not_store_as_given(httpx_mock, client):
+    httpx_mock.post(f"/instances/{INSTANCE_ID}/write_status").mock(return_value=httpx.Response(200, json=_api_ok([
+        {"write_id": "w-1", "write_status": "completed", "changes": {"unstored_field_values": [_UNSTORED]}},
+    ])))
+
+    status = client.instance(INSTANCE_ID).write_status("w-1")
+
+    assert status.changes["unstored_field_values"] == [_UNSTORED]
+
+
+# ---------------------------------------------------------------------------
+# Agent installation instructions
+# ---------------------------------------------------------------------------
+
+_INSTALL = "Paste this into your agent to connect it to this memory."
+
+
+def test_instance_info_reads_the_installation_instructions(httpx_mock, client):
+    httpx_mock.get(f"/instances/{INSTANCE_ID}").mock(return_value=httpx.Response(200, json=_api_ok([
+        _instance_item(agent_installation_instructions=_INSTALL, agent_installation_instructions_epoch=3),
+    ])))
+
+    info = client.admin.get_instance(INSTANCE_ID)
+
+    assert info.agent_installation_instructions == _INSTALL
+    assert info.agent_installation_instructions_epoch == 3
+
+
+def test_instance_info_defaults_when_the_server_sends_no_installation_instructions(httpx_mock, client):
+    httpx_mock.get(f"/instances/{INSTANCE_ID}").mock(
+        return_value=httpx.Response(200, json=_api_ok([_instance_item()])),
+    )
+
+    info = client.admin.get_instance(INSTANCE_ID)
+
+    assert info.agent_installation_instructions is None
+    assert info.agent_installation_instructions_epoch == 0
+
+
+def test_update_metadata_sends_the_installation_instructions_and_their_epoch_guard(httpx_mock, client):
+    route = httpx_mock.put(f"/instances/{INSTANCE_ID}").mock(
+        return_value=httpx.Response(200, json=_api_ok([_instance_item()])),
+    )
+
+    client.admin.update_instance_metadata(
+        INSTANCE_ID, "n", None,
+        agent_installation_instructions=_INSTALL,
+        expected_installation_instructions_epoch=3,
+    )
+
+    assert json.loads(route.calls.last.request.content) == {
+        "name": "n",
+        "description": None,
+        "agent_installation_instructions": _INSTALL,
+        "expected_installation_instructions_epoch": 3,
+    }
+
+
+def test_installation_instructions_are_cleared_only_when_passed_explicitly(httpx_mock, client):
+    route = httpx_mock.put(f"/instances/{INSTANCE_ID}").mock(
+        return_value=httpx.Response(200, json=_api_ok([_instance_item()])),
+    )
+
+    client.admin.update_instance_metadata(INSTANCE_ID, "n", None)
+    assert "agent_installation_instructions" not in json.loads(route.calls.last.request.content)
+
+    client.admin.update_instance_metadata(INSTANCE_ID, "n", None, agent_installation_instructions=None)
+    assert json.loads(route.calls.last.request.content)["agent_installation_instructions"] is None
+
+
+def test_patch_sends_the_installation_instructions_only_when_named(httpx_mock, client):
+    route = httpx_mock.patch(f"/instances/{INSTANCE_ID}").mock(
+        return_value=httpx.Response(200, json=_api_ok([_instance_item()])),
+    )
+
+    client.admin.patch_instance_metadata(INSTANCE_ID, agent_installation_instructions=_INSTALL)
+    assert json.loads(route.calls.last.request.content) == {"agent_installation_instructions": _INSTALL}
+
+    client.admin.patch_instance_metadata(INSTANCE_ID, name="n")
+    assert json.loads(route.calls.last.request.content) == {"name": "n"}
+
+
+async def test_async_update_metadata_sends_the_installation_instructions_and_their_epoch_guard(
+    httpx_mock, async_client,
+):
+    route = httpx_mock.put(f"/instances/{INSTANCE_ID}").mock(
+        return_value=httpx.Response(200, json=_api_ok([_instance_item()])),
+    )
+
+    await async_client.admin.update_instance_metadata(
+        INSTANCE_ID, "n", None,
+        agent_installation_instructions=_INSTALL,
+        expected_installation_instructions_epoch=3,
+    )
+
+    assert json.loads(route.calls.last.request.content) == {
+        "name": "n",
+        "description": None,
+        "agent_installation_instructions": _INSTALL,
+        "expected_installation_instructions_epoch": 3,
+    }
+
+
+async def test_async_patch_sends_the_installation_instructions_only_when_named(httpx_mock, async_client):
+    route = httpx_mock.patch(f"/instances/{INSTANCE_ID}").mock(
+        return_value=httpx.Response(200, json=_api_ok([_instance_item()])),
+    )
+
+    await async_client.admin.patch_instance_metadata(INSTANCE_ID, agent_installation_instructions=_INSTALL)
+
+    assert json.loads(route.calls.last.request.content) == {"agent_installation_instructions": _INSTALL}
+
+
+def test_patch_sends_the_epoch_guards_when_given_them(httpx_mock, client):
+    """PATCH refuses a losing save, as PUT does."""
+    route = httpx_mock.patch(f"/instances/{INSTANCE_ID}").mock(
+        return_value=httpx.Response(200, json=_api_ok([_instance_item()])),
+    )
+
+    client.admin.patch_instance_metadata(
+        INSTANCE_ID,
+        agent_owner_instructions="Prefer updating an existing record.",
+        expected_owner_instructions_epoch=4,
+        agent_installation_instructions=_INSTALL,
+        expected_installation_instructions_epoch=3,
+    )
+
+    assert json.loads(route.calls.last.request.content) == {
+        "agent_owner_instructions": "Prefer updating an existing record.",
+        "expected_owner_instructions_epoch": 4,
+        "agent_installation_instructions": _INSTALL,
+        "expected_installation_instructions_epoch": 3,
+    }
+
+
+def test_patch_sends_no_epoch_guard_unless_given_one(httpx_mock, client):
+    route = httpx_mock.patch(f"/instances/{INSTANCE_ID}").mock(
+        return_value=httpx.Response(200, json=_api_ok([_instance_item()])),
+    )
+
+    client.admin.patch_instance_metadata(INSTANCE_ID, agent_owner_instructions="Prefer updating an existing record.")
+
+    assert json.loads(route.calls.last.request.content) == {
+        "agent_owner_instructions": "Prefer updating an existing record.",
+    }
+
+
+async def test_async_patch_sends_the_epoch_guards_when_given_them(httpx_mock, async_client):
+    route = httpx_mock.patch(f"/instances/{INSTANCE_ID}").mock(
+        return_value=httpx.Response(200, json=_api_ok([_instance_item()])),
+    )
+
+    await async_client.admin.patch_instance_metadata(
+        INSTANCE_ID,
+        agent_owner_instructions="Prefer updating an existing record.",
+        expected_owner_instructions_epoch=4,
+        agent_installation_instructions=_INSTALL,
+        expected_installation_instructions_epoch=3,
+    )
+
+    assert json.loads(route.calls.last.request.content) == {
+        "agent_owner_instructions": "Prefer updating an existing record.",
+        "expected_owner_instructions_epoch": 4,
+        "agent_installation_instructions": _INSTALL,
+        "expected_installation_instructions_epoch": 3,
+    }
