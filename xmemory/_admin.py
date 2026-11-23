@@ -333,6 +333,8 @@ class AdminAPI:
         *,
         agent_owner_instructions: str | None | UnsetType = UNSET,
         expected_owner_instructions_epoch: int | UnsetType = UNSET,
+        agent_installation_instructions: str | None | UnsetType = UNSET,
+        expected_installation_instructions_epoch: int | UnsetType = UNSET,
         timeout: float | None = None,
     ) -> InstanceInfo:
         """Update the name and description of an instance.
@@ -347,6 +349,12 @@ class AdminAPI:
         response's :attr:`~xmemory.InstanceInfo.agent_owner_instructions_epoch` as
         ``expected_owner_instructions_epoch``: a save that raced someone else's
         edit is then refused rather than silently overwriting it.
+
+        ``agent_installation_instructions`` — guidance added to the setup prompt a
+        person pastes into an agent for this instance — works the same way: left as it is
+        unless you name it, cleared by ``None``, and guarded by
+        ``expected_installation_instructions_epoch`` (from
+        :attr:`~xmemory.InstanceInfo.agent_installation_instructions_epoch`).
         """
         return self._t.request_one(
             "PUT", f"/instances/{instance_id}", InstanceInfo,
@@ -355,6 +363,8 @@ class AdminAPI:
                 description=description,
                 agent_owner_instructions=agent_owner_instructions,
                 expected_owner_instructions_epoch=expected_owner_instructions_epoch,
+                agent_installation_instructions=agent_installation_instructions,
+                expected_installation_instructions_epoch=expected_installation_instructions_epoch,
             ),
             timeout=timeout,
         )
@@ -369,6 +379,9 @@ class AdminAPI:
         agent_default_binding_tier: str | None | UnsetType = UNSET,
         agent_engagement_hints: Sequence[str] | None | UnsetType = UNSET,
         agent_owner_instructions: str | None | UnsetType = UNSET,
+        expected_owner_instructions_epoch: int | UnsetType = UNSET,
+        agent_installation_instructions: str | None | UnsetType = UNSET,
+        expected_installation_instructions_epoch: int | UnsetType = UNSET,
         timeout: float | None = None,
     ) -> InstanceInfo:
         """Change some of an instance's metadata, leaving the rest alone.
@@ -391,13 +404,17 @@ class AdminAPI:
         permission on the instance can set it, including an agent asked to. The
         server caps it at 2000 characters.
 
-        Prefer :meth:`update_instance_metadata` for that field: this endpoint
-        accepts no ``expected_owner_instructions_epoch``, so an edit composed
-        from a value someone has since replaced overwrites theirs silently. The
-        three hints above are last-writer-wins by design — a lost update there
-        only re-proposes a suggestion — but a lost instruction is a rule that
-        stops being enforced. Use this one for the instructions only when you
-        are seeding a value no one else is editing.
+        When editing it, pass the
+        :attr:`~xmemory.InstanceInfo.agent_owner_instructions_epoch` you read the value
+        at as ``expected_owner_instructions_epoch``: a save that raced someone else's
+        edit is then refused rather than silently overwriting it. The three hints
+        above take no such guard and are last-writer-wins by design — a lost update
+        there only re-proposes a suggestion — but a lost instruction is a rule that
+        stops being enforced.
+
+        ``agent_installation_instructions``, guidance added to the setup prompt a
+        person pastes into an agent for this instance, is guarded the same way by
+        ``expected_installation_instructions_epoch``.
         """
         return self._t.request_one(
             "PATCH", f"/instances/{instance_id}", InstanceInfo,
@@ -408,6 +425,9 @@ class AdminAPI:
                 agent_default_binding_tier=agent_default_binding_tier,
                 agent_engagement_hints=_as_str_list(agent_engagement_hints),
                 agent_owner_instructions=agent_owner_instructions,
+                expected_owner_instructions_epoch=expected_owner_instructions_epoch,
+                agent_installation_instructions=agent_installation_instructions,
+                expected_installation_instructions_epoch=expected_installation_instructions_epoch,
             ),
             timeout=timeout,
         )
@@ -681,6 +701,8 @@ class AsyncAdminAPI:
         *,
         agent_owner_instructions: str | None | UnsetType = UNSET,
         expected_owner_instructions_epoch: int | UnsetType = UNSET,
+        agent_installation_instructions: str | None | UnsetType = UNSET,
+        expected_installation_instructions_epoch: int | UnsetType = UNSET,
         timeout: float | None = None,
     ) -> InstanceInfo:
         """Update the name and description of an instance.
@@ -695,6 +717,12 @@ class AsyncAdminAPI:
         response's :attr:`~xmemory.InstanceInfo.agent_owner_instructions_epoch` as
         ``expected_owner_instructions_epoch``: a save that raced someone else's
         edit is then refused rather than silently overwriting it.
+
+        ``agent_installation_instructions`` — guidance added to the setup prompt a
+        person pastes into an agent for this instance — works the same way: left as it is
+        unless you name it, cleared by ``None``, and guarded by
+        ``expected_installation_instructions_epoch`` (from
+        :attr:`~xmemory.InstanceInfo.agent_installation_instructions_epoch`).
         """
         return await self._t.request_one(
             "PUT", f"/instances/{instance_id}", InstanceInfo,
@@ -703,6 +731,8 @@ class AsyncAdminAPI:
                 description=description,
                 agent_owner_instructions=agent_owner_instructions,
                 expected_owner_instructions_epoch=expected_owner_instructions_epoch,
+                agent_installation_instructions=agent_installation_instructions,
+                expected_installation_instructions_epoch=expected_installation_instructions_epoch,
             ),
             timeout=timeout,
         )
@@ -717,6 +747,9 @@ class AsyncAdminAPI:
         agent_default_binding_tier: str | None | UnsetType = UNSET,
         agent_engagement_hints: Sequence[str] | None | UnsetType = UNSET,
         agent_owner_instructions: str | None | UnsetType = UNSET,
+        expected_owner_instructions_epoch: int | UnsetType = UNSET,
+        agent_installation_instructions: str | None | UnsetType = UNSET,
+        expected_installation_instructions_epoch: int | UnsetType = UNSET,
         timeout: float | None = None,
     ) -> InstanceInfo:
         """Change some of an instance's metadata, leaving the rest alone.
@@ -739,13 +772,17 @@ class AsyncAdminAPI:
         permission on the instance can set it, including an agent asked to. The
         server caps it at 2000 characters.
 
-        Prefer :meth:`update_instance_metadata` for that field: this endpoint
-        accepts no ``expected_owner_instructions_epoch``, so an edit composed
-        from a value someone has since replaced overwrites theirs silently. The
-        three hints above are last-writer-wins by design — a lost update there
-        only re-proposes a suggestion — but a lost instruction is a rule that
-        stops being enforced. Use this one for the instructions only when you
-        are seeding a value no one else is editing.
+        When editing it, pass the
+        :attr:`~xmemory.InstanceInfo.agent_owner_instructions_epoch` you read the value
+        at as ``expected_owner_instructions_epoch``: a save that raced someone else's
+        edit is then refused rather than silently overwriting it. The three hints
+        above take no such guard and are last-writer-wins by design — a lost update
+        there only re-proposes a suggestion — but a lost instruction is a rule that
+        stops being enforced.
+
+        ``agent_installation_instructions``, guidance added to the setup prompt a
+        person pastes into an agent for this instance, is guarded the same way by
+        ``expected_installation_instructions_epoch``.
         """
         return await self._t.request_one(
             "PATCH", f"/instances/{instance_id}", InstanceInfo,
@@ -756,6 +793,9 @@ class AsyncAdminAPI:
                 agent_default_binding_tier=agent_default_binding_tier,
                 agent_engagement_hints=_as_str_list(agent_engagement_hints),
                 agent_owner_instructions=agent_owner_instructions,
+                expected_owner_instructions_epoch=expected_owner_instructions_epoch,
+                agent_installation_instructions=agent_installation_instructions,
+                expected_installation_instructions_epoch=expected_installation_instructions_epoch,
             ),
             timeout=timeout,
         )

@@ -158,18 +158,28 @@ info.agent_engagement_hints
 These read as plain strings rather than enums, so a value your server knows and
 this release does not is returned rather than rejected.
 
-**Setting the standing instructions.** Use `update_instance_metadata` for
-`agent_owner_instructions`, not `patch_instance_metadata`. The field is
-rendered to agents verbatim, and a second writer edits it from the same screen,
-so a silently lost edit is a rule that stops being enforced. Only
-`update_instance_metadata` carries `expected_owner_instructions_epoch`: pass
-the epoch you read the value at and the server refuses the losing save instead
-of applying it.
+**Setting the standing instructions.** `agent_owner_instructions` is rendered
+to agents verbatim, and a second writer edits it from the same screen, so a
+silently lost edit is a rule that stops being enforced. When you edit it, pass
+the epoch you read the value at as `expected_owner_instructions_epoch`, and the
+server refuses the losing save instead of applying it. Both
+`update_instance_metadata` and `patch_instance_metadata` take it;
+`patch_instance_metadata` sets the field without restating the name.
 
-`patch_instance_metadata` also accepts the field — it is the only way to set it
-without restating the name — but it can carry no guard, so an edit composed
-from stale data overwrites a newer one silently. Reach for it only when you are
-seeding a value nobody else is editing.
+**Setting the installation instructions.** `agent_installation_instructions` is
+guidance the instance's editors add to the setup prompt a person pastes into an
+agent: the prompt is xmemory's own setup text, followed by these instructions
+when they are set (`None` when there are none). They are set and guarded the
+same way as the standing instructions, with their own epoch:
+
+```python
+info = client.admin.get_instance("<instance-id>")
+client.admin.update_instance_metadata(
+    "<instance-id>", info.name, info.description,
+    agent_installation_instructions="Connect to this memory before you plan a task.",
+    expected_installation_instructions_epoch=info.agent_installation_instructions_epoch,
+)
+```
 
 ```python
 info = client.admin.get_instance("<instance-id>")
@@ -582,6 +592,28 @@ entry has the `folded` and `count` keys, so read `folded` with `.get`.
 `deleted["relations"]` folds a delete's links past 100 of one relation into one
 entry with that relation's `name`, empty `endpoints` and `fields`,
 `"folded": True` and their `count`.
+
+#### Values a write could not store as given
+
+A value the text gave that its field's type cannot hold is still written the
+way the field holds it, and the write says so under
+`changes["unstored_field_values"]`: a number field given a value it can't read
+as a number is left empty (`"not_a_number"`), a whole-number field given a
+fraction keeps the whole part (`"truncated"`), and a yes/no field given
+anything else holds a yes or a no the text didn't state (`"not_a_boolean"`).
+Each entry names the record as the write's other entries do, plus `field`,
+`reason`, `given` (the value as given, text cut to 300 characters) and `stored`
+(`None` when nothing was stored):
+
+```python
+result = inst.write("Order 17 is for about twenty units.")
+for v in (result.changes or {}).get("unstored_field_values", []):
+    print(v["object_type_name"], v["identity"], v["field"], v["reason"], v["given"], "->", v["stored"])
+```
+
+Only records the write wrote are listed, and a field with a declared format is
+not. The key is omitted when there is none and by a server that predates the
+report. Treat `reason` as a plain string: a newer server may add one.
 
 #### Extraction logic
 
