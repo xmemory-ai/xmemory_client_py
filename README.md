@@ -229,6 +229,9 @@ result = inst.write(structured_mutations=[
     # Plain dicts in the API wire form work too:
     {"object_mutation": {"object_type": "person", "update": {"key": {"name": "Bob"}, "values": {"role": None}}}},  # None clears
 ])
+# A field with allowed values takes one of them: a value naming one in another
+# case or spacing is stored as that value, and any other value fails the write
+# with a 400 whose message names the allowed values.
 
 # Continuing the example above, where Bob was created: a relation's own fields (see
 # "Fields on a relation") go in its values. An update names one link by every
@@ -602,12 +605,15 @@ entry with that relation's `name`, empty `endpoints` and `fields`,
 
 #### Values a write could not store as given
 
-A value the text gave that its field's type cannot hold is still written the
-way the field holds it, and the write says so under
+A value the text gave that its field cannot hold as given is written the way
+the field holds it, or not at all, and the write says so under
 `changes["unstored_field_values"]`: a number field given a value it can't read
 as a number is left empty (`"not_a_number"`), a whole-number field given a
-fraction keeps the whole part (`"truncated"`), and a yes/no field given
-anything else holds a yes or a no the text didn't state (`"not_a_boolean"`).
+fraction keeps the whole part (`"truncated"`), a yes/no field given anything
+else holds a yes or a no the text didn't state (`"not_a_boolean"`), and a field
+with allowed values given a value that names none of them is not written, so it
+keeps what it held (`"not_an_allowed_value"`). A value that names one of them
+in another case or spacing is stored as that value and is not listed.
 Each entry names the record as the write's other entries do, plus `field`,
 `reason`, `given` (the value as given, text cut to 300 characters) and `stored`
 (`None` when nothing was stored):
@@ -618,9 +624,10 @@ for v in (result.changes or {}).get("unstored_field_values", []):
     print(v["object_type_name"], v["identity"], v["field"], v["reason"], v["given"], "->", v["stored"])
 ```
 
-Only records the write wrote are listed, and a field with a declared format is
-not. The key is omitted when there is none and by a server that predates the
-report. Treat `reason` as a plain string: a newer server may add one.
+Only records the write wrote are listed, and a value a field with a declared
+format cannot hold is not. The key is omitted when there is none and by a
+server that predates the report. Treat `reason` as a plain string: a newer
+server may add one.
 
 #### Extraction logic
 

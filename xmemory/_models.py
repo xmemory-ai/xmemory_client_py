@@ -390,11 +390,12 @@ class WriteResult(BaseModel):
     # ``"new"``). Advisory: the write landed either way. Omitted when there is no such entry and by a
     # server that predates it; an absent key does not prove the texts agreed, since a merge that failed,
     # appended, or left the stored text unchanged reports none.
-    # Also ``unstored_field_values``: values the text gave that their field's type could not hold as given, in a
-    # field with no declared format, one entry each, with ``object_type_name``, ``identity`` (as the other entries
-    # name the record), ``field``, ``reason`` (``"not_a_number"``: a number field left empty; ``"truncated"``: a
-    # whole-number field given a fraction; ``"not_a_boolean"``: a yes/no field given anything else; a newer server
-    # may add a reason, so treat it as a plain string), ``given`` (the value as the text gave it, text cut to 300
+    # Also ``unstored_field_values``: values the text gave that their field could not hold as given, one entry each,
+    # with ``object_type_name``, ``identity`` (as the other entries name the record), ``field``, ``reason`` (in a
+    # field with no declared format, ``"not_a_number"``: a number field left empty; ``"truncated"``: a whole-number
+    # field given a fraction; ``"not_a_boolean"``: a yes/no field given anything else; and ``"not_an_allowed_value"``:
+    # a field with allowed values given a value that names none of them, which is not stored; a newer server may add
+    # a reason, so treat it as a plain string), ``given`` (the value as the text gave it, text cut to 300
     # characters) and ``stored`` (what the field holds for it; ``None`` when nothing was stored). Only records the
     # write wrote are listed. Advisory: the write stored what it stored either way. Omitted when there is none and
     # by a server that predates it.
