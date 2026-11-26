@@ -229,10 +229,13 @@ result = inst.write(structured_mutations=[
     # Plain dicts in the API wire form work too:
     {"object_mutation": {"object_type": "person", "update": {"key": {"name": "Bob"}, "values": {"role": None}}}},  # None clears
 ])
-# A field with allowed values takes one of them: a value naming one in another
-# case, accents or surrounding spaces is stored as that value, and any other
-# value of the field's type that the write would store, a new record's key
-# included, fails the write with a 400 whose message names the allowed values.
+# A field with allowed values takes one of them. A value is read as the field's
+# type first (the text "2" is the number 2 in a number field), then held to the
+# list: a value naming one in another case, accents or surrounding spaces is
+# stored as that value, and any other value of the field's type that the write
+# would store, a new record's key included, fails the write: the SDK raises
+# XmemoryAPIError with code "VALIDATION_ERROR", whose message names the allowed
+# values.
 # None still clears the field, a value of another type fails as it always has,
 # and a key or match that only finds a stored record is not checked.
 
@@ -619,7 +622,9 @@ keeps what it held (`"not_an_allowed_value"`). A value that names one of them
 in another case, accents or surrounding spaces is stored as that value and is
 not listed. Each entry names the record as the write's other entries do, plus
 `field`, `reason`, `given` (the value as given, text cut to 300 characters) and
-`stored` (`None` when nothing was stored):
+`stored` (the value the write stored, or `None` when it stored nothing, so the
+field keeps what it held; for a rename or merge the write left out, the value
+the field keeps):
 
 ```python
 result = inst.write("Order 17 is for about twenty units.")
@@ -628,10 +633,12 @@ for v in (result.changes or {}).get("unstored_field_values", []):
 ```
 
 A value the text gave is listed only for a record the write wrote, and one a
-field with a declared format cannot hold is not listed. A rename the write left
-out because its new key names none of the allowed values is listed under the
-record's current key, with the value it keeps in `stored`. The key is omitted when there is none and by a server that predates the
-report. Treat `reason` as a plain string: a newer server may add one.
+field with a declared format cannot hold is not listed. A value the write
+itself left out because it names none of the allowed values, such as a rename's
+new key or a merge's result, is listed under the record it kept, with the value
+the field keeps in `stored`. The key is omitted when there is none and by a
+server that predates the report. Treat `reason` as a plain string: a newer
+server may add one.
 
 #### Extraction logic
 
