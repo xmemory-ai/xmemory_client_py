@@ -396,9 +396,10 @@ class WriteResult(BaseModel):
     # field given a fraction; ``"not_a_boolean"``: a yes/no field given anything else; and ``"not_an_allowed_value"``:
     # a field with allowed values given a value that names none of them, which is not stored; a newer server may add
     # a reason, so treat it as a plain string), ``given`` (the value as the text gave it, text cut to 300
-    # characters) and ``stored`` (what the field holds for it; ``None`` when nothing was stored). Only records the
-    # write wrote are listed. Advisory: the write stored what it stored either way. Omitted when there is none and
-    # by a server that predates it.
+    # characters) and ``stored`` (what the field holds for it; ``None`` when nothing was stored). Listed for the
+    # records the write wrote, and for a rename it left out because its new key names none of the allowed values,
+    # under the record's current key with the value it keeps in ``stored``. Advisory: the write stored what it stored
+    # either way. Omitted when there is none and by a server that predates it.
     # Also ``orphaned_records``: the stored records a delete in the write left with no link of a relation they
     # had one of, one per record and relation, with ``object_type_name``, ``identity`` and ``relation`` (the
     # relation's class name: XMD ``works_at`` comes back as ``WorksAt``).
