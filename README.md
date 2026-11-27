@@ -229,6 +229,15 @@ result = inst.write(structured_mutations=[
     # Plain dicts in the API wire form work too:
     {"object_mutation": {"object_type": "person", "update": {"key": {"name": "Bob"}, "values": {"role": None}}}},  # None clears
 ])
+# A field with allowed values takes one of them. A value is read as the field's
+# type first (the text "2" is the number 2 in a number field), then held to the
+# list: a value naming one in another case, accents or surrounding spaces is
+# stored as that value, and any other value of the field's type that the write
+# would store, a new record's key included, fails the write: the SDK raises
+# XmemoryAPIError with code "VALIDATION_ERROR", whose message names the allowed
+# values.
+# None still clears the field, a value of another type fails as it always has,
+# and a key or match that only finds a stored record is not checked.
 
 # Continuing the example above, where Bob was created: a relation's own fields (see
 # "Fields on a relation") go in its values. An update names one link by every
@@ -602,15 +611,22 @@ entry with that relation's `name`, empty `endpoints` and `fields`,
 
 #### Values a write could not store as given
 
-A value the text gave that its field's type cannot hold is still written the
-way the field holds it, and the write says so under
+A value the text gave that its field cannot hold as given is written the way
+the field holds it, or not at all, and the write says so under
 `changes["unstored_field_values"]`: a number field given a value it can't read
 as a number is left empty (`"not_a_number"`), a whole-number field given a
-fraction keeps the whole part (`"truncated"`), and a yes/no field given
-anything else holds a yes or a no the text didn't state (`"not_a_boolean"`).
-Each entry names the record as the write's other entries do, plus `field`,
-`reason`, `given` (the value as given, text cut to 300 characters) and `stored`
-(`None` when nothing was stored):
+fraction keeps the whole part (`"truncated"`), a yes/no field given anything
+else holds a yes or a no the text didn't state (`"not_a_boolean"`), and a field
+with allowed values given a value that names none of them is not written, so it
+keeps what it held (`"not_an_allowed_value"`). A value that names one of them
+in another case, accents or surrounding spaces is stored as that value and is
+not listed. Each entry names the record as the write's other entries do, plus
+`field`, `reason`, `given` (the value as given, or, for a value the write
+itself left out, the value the write proposed, such as the merged value of two
+records; text cut to 300 characters) and `stored` (the value the write stored,
+or `None` when it stored nothing, so the field keeps what it held; for a value
+the write itself left out, such as a rename's new key or the merged value of
+two records merged into one, the value the field keeps):
 
 ```python
 result = inst.write("Order 17 is for about twenty units.")
@@ -618,9 +634,18 @@ for v in (result.changes or {}).get("unstored_field_values", []):
     print(v["object_type_name"], v["identity"], v["field"], v["reason"], v["given"], "->", v["stored"])
 ```
 
-Only records the write wrote are listed, and a field with a declared format is
-not. The key is omitted when there is none and by a server that predates the
-report. Treat `reason` as a plain string: a newer server may add one.
+A value the text gave is listed only for a record the write wrote, and one a
+field with a declared format cannot hold is not listed. A value the write
+itself left out because it names none of the allowed values, such as a rename's
+new key or the merged value of two records merged into one, is listed under the
+record it kept, with the value the field keeps in `stored`. A record left out
+because its key names none of the allowed values and no stored record has it is
+listed in `skipped_candidates`, and its key value is listed here with `stored`
+`None`. A bulk update that would set such a value is not carried out; it is
+reported as a refused entry under `changes["updated"]`, with the identifier
+`refused` and a `reason`. The key is omitted when there is none and by a server
+that predates the report. Treat `reason` as a plain string: a newer server may
+add one.
 
 #### Extraction logic
 
@@ -763,7 +788,9 @@ objects:
 - If a merge cannot be made, the new value is appended, even past the cap, and
   nothing stored is cut.
 - Only text writes merge, through the server's diff engine.
-  `structured_mutations` replace the value as given.
+  `structured_mutations` replace the value as the server checks it: a value
+  that names an allowed value in another case, with accents, or with spaces
+  around it is stored as that value.
 - Adding, changing or removing a `merge` is a metadata-only schema change.
 
 Where a merge that changed the field found the new value contradicting the
