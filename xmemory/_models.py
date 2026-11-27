@@ -394,7 +394,7 @@ class WriteResult(BaseModel):
     # with ``object_type_name``, ``identity`` (as the other entries name the record), ``field``, ``reason``,
     # ``given`` (the value as the text gave it, text cut to 300 characters) and ``stored`` (the value the write stored,
     # or ``None`` when it stored nothing, so the field keeps what it held; for a value the write itself left out, such
-    # as a bulk update's new value, a rename's new key or a merge's result, the value the field keeps).
+    # as a rename's new key or the merged value of two records merged into one, the value the field keeps).
     # In a field with no declared format, ``reason`` is ``"not_a_number"`` (a number field left empty),
     # ``"truncated"`` (a whole-number field given a fraction) or ``"not_a_boolean"`` (a yes/no field given anything
     # else).
@@ -402,9 +402,9 @@ class WriteResult(BaseModel):
     # stored.
     # A newer server may add a reason, so treat it as a plain string.
     # Listed for the records the write wrote, and for a value the write itself left out because it names none of the
-    # allowed values, such as a bulk update's new value, a rename's new key or a merge's result, under the record it
-    # kept with the field's value in ``stored``. Advisory: the write stored what it stored
-    # either way. Omitted when there is none and by a server that predates it.
+    # allowed values, such as a rename's new key or the merged value of two records merged into one, under the record
+    # it kept with the field's value in ``stored``. Advisory: the write stored what it stored either way. Omitted when
+    # there is none and by a server that predates it.
     # Also ``orphaned_records``: the stored records a delete in the write left with no link of a relation they
     # had one of, one per record and relation, with ``object_type_name``, ``identity`` and ``relation`` (the
     # relation's class name: XMD ``works_at`` comes back as ``WorksAt``).
