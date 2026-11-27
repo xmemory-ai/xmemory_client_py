@@ -161,7 +161,8 @@ class InstanceAPI:
         ``result.changes["merge_contradictions"]`` says what each said and which
         one it kept; an absent key does not prove they agreed, since a merge that
         failed, appended, or left the stored text unchanged reports none. Only
-        text writes merge; ``structured_mutations`` replace the value as given.
+        text writes merge; ``structured_mutations`` replace the value as the server checks it: a value that
+        names an allowed value in another case, with accents, or with spaces around it is stored as that value.
 
         Deleting a record never deletes the records linked to it: the relation's
         ``on_delete`` removes or clears each link, and the write lists those
@@ -478,7 +479,8 @@ class AsyncInstanceAPI:
         ``result.changes["merge_contradictions"]`` says what each said and which
         one it kept; an absent key does not prove they agreed, since a merge that
         failed, appended, or left the stored text unchanged reports none. Only
-        text writes merge; ``structured_mutations`` replace the value as given.
+        text writes merge; ``structured_mutations`` replace the value as the server checks it: a value that
+        names an allowed value in another case, with accents, or with spaces around it is stored as that value.
 
         Deleting a record never deletes the records linked to it: the relation's
         ``on_delete`` removes or clears each link, and the write lists those

@@ -621,11 +621,12 @@ with allowed values given a value that names none of them is not written, so it
 keeps what it held (`"not_an_allowed_value"`). A value that names one of them
 in another case, accents or surrounding spaces is stored as that value and is
 not listed. Each entry names the record as the write's other entries do, plus
-`field`, `reason`, `given` (the value as given, text cut to 300 characters) and
-`stored` (the value the write stored, or `None` when it stored nothing, so the
-field keeps what it held; for a value the write itself left out, such as a
-rename's new key or the merged value of two records merged into one, the value
-the field keeps):
+`field`, `reason`, `given` (the value as given, or, for a value the write
+itself left out, the value the write proposed, such as the merged value of two
+records; text cut to 300 characters) and `stored` (the value the write stored,
+or `None` when it stored nothing, so the field keeps what it held; for a value
+the write itself left out, such as a rename's new key or the merged value of
+two records merged into one, the value the field keeps):
 
 ```python
 result = inst.write("Order 17 is for about twenty units.")
@@ -637,9 +638,14 @@ A value the text gave is listed only for a record the write wrote, and one a
 field with a declared format cannot hold is not listed. A value the write
 itself left out because it names none of the allowed values, such as a rename's
 new key or the merged value of two records merged into one, is listed under the
-record it kept, with the value the field keeps in `stored`. The key is omitted
-when there is none and by a server that predates the report. Treat `reason` as
-a plain string: a newer server may add one.
+record it kept, with the value the field keeps in `stored`. A record left out
+because its key names none of the allowed values and no stored record has it is
+listed in `skipped_candidates`, and its key value is listed here with `stored`
+`None`. A bulk update that would set such a value is not carried out; it is
+reported as a refused entry under `changes["updated"]`, with the identifier
+`refused` and a `reason`. The key is omitted when there is none and by a server
+that predates the report. Treat `reason` as a plain string: a newer server may
+add one.
 
 #### Extraction logic
 
@@ -782,7 +788,9 @@ objects:
 - If a merge cannot be made, the new value is appended, even past the cap, and
   nothing stored is cut.
 - Only text writes merge, through the server's diff engine.
-  `structured_mutations` replace the value as given.
+  `structured_mutations` replace the value as the server checks it: a value
+  that names an allowed value in another case, with accents, or with spaces
+  around it is stored as that value.
 - Adding, changing or removing a `merge` is a metadata-only schema change.
 
 Where a merge that changed the field found the new value contradicting the
