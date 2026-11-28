@@ -42,7 +42,7 @@ _DEFAULT_DESCRIBE_TTL_SECONDS: float = 300.0  # 5 minutes
 def _build_write_request(
     text: str,
     structured_mutations: list[WriteMutation | dict[str, Any]] | None,
-    extraction_logic: ExtractionLogic,
+    extraction_logic: ExtractionLogic | None,
     diff_engine: bool | None,
     scope: WriteScope | None,
 ) -> _WriteRequest:
@@ -136,7 +136,7 @@ class InstanceAPI:
         text: str = "",
         *,
         structured_mutations: list[WriteMutation | dict[str, Any]] | None = None,
-        extraction_logic: ExtractionLogic = ExtractionLogic.FAST,
+        extraction_logic: ExtractionLogic | None = None,
         diff_engine: bool | None = None,
         scope: WriteScope | None = None,
         timeout: float | None = None,
@@ -153,7 +153,9 @@ class InstanceAPI:
         later mutations may reference objects created earlier in the batch, and
         a ``None`` value in a mutation's ``values`` clears that field.
 
-        ``extraction_logic`` only affects the ``text`` path.
+        ``extraction_logic`` only affects the ``text`` path, and is sent only when given. Every text write
+        uses deep extraction; one sent ``ExtractionLogic.FAST`` notes this in its ``warnings``. A structured
+        write does no extraction.
 
         A ``str`` field whose schema declares a ``merge`` takes a text write's
         value merged into the text already stored, instead of replacing it.
@@ -199,6 +201,7 @@ class InstanceAPI:
             "POST", f"/instances/{self._id}/write", WriteResult,
             body=_build_write_request(text, structured_mutations, extraction_logic, diff_engine, scope),
             timeout=timeout,
+            write=True,
         )
 
     def write_async(
@@ -206,7 +209,7 @@ class InstanceAPI:
         text: str = "",
         *,
         structured_mutations: list[WriteMutation | dict[str, Any]] | None = None,
-        extraction_logic: ExtractionLogic = ExtractionLogic.FAST,
+        extraction_logic: ExtractionLogic | None = None,
         diff_engine: bool | None = None,
         scope: WriteScope | None = None,
         timeout: float | None = None,
@@ -229,6 +232,7 @@ class InstanceAPI:
             "POST", f"/instances/{self._id}/write_async", AsyncWriteResult,
             body=_build_write_request(text, structured_mutations, extraction_logic, diff_engine, scope),
             timeout=timeout,
+            write=True,
         )
 
     def write_status(self, write_id: str, *, timeout: float | None = None) -> WriteStatusResult:
@@ -248,7 +252,7 @@ class InstanceAPI:
         self,
         text: str,
         *,
-        extraction_logic: ExtractionLogic = ExtractionLogic.FAST,
+        extraction_logic: ExtractionLogic | None = None,
         timeout: float | None = None,
     ) -> ExtractResult:
         """Extract structured data from text without persisting it."""
@@ -453,7 +457,7 @@ class AsyncInstanceAPI:
         text: str = "",
         *,
         structured_mutations: list[WriteMutation | dict[str, Any]] | None = None,
-        extraction_logic: ExtractionLogic = ExtractionLogic.FAST,
+        extraction_logic: ExtractionLogic | None = None,
         diff_engine: bool | None = None,
         scope: WriteScope | None = None,
         timeout: float | None = None,
@@ -470,7 +474,9 @@ class AsyncInstanceAPI:
         later mutations may reference objects created earlier in the batch, and
         a ``None`` value in a mutation's ``values`` clears that field.
 
-        ``extraction_logic`` only affects the ``text`` path.
+        ``extraction_logic`` only affects the ``text`` path, and is sent only when given. Every text write
+        uses deep extraction; one sent ``ExtractionLogic.FAST`` notes this in its ``warnings``. A structured
+        write does no extraction.
 
         A ``str`` field whose schema declares a ``merge`` takes a text write's
         value merged into the text already stored, instead of replacing it.
@@ -516,6 +522,7 @@ class AsyncInstanceAPI:
             "POST", f"/instances/{self._id}/write", WriteResult,
             body=_build_write_request(text, structured_mutations, extraction_logic, diff_engine, scope),
             timeout=timeout,
+            write=True,
         )
 
     async def write_async(
@@ -523,7 +530,7 @@ class AsyncInstanceAPI:
         text: str = "",
         *,
         structured_mutations: list[WriteMutation | dict[str, Any]] | None = None,
-        extraction_logic: ExtractionLogic = ExtractionLogic.FAST,
+        extraction_logic: ExtractionLogic | None = None,
         diff_engine: bool | None = None,
         scope: WriteScope | None = None,
         timeout: float | None = None,
@@ -546,6 +553,7 @@ class AsyncInstanceAPI:
             "POST", f"/instances/{self._id}/write_async", AsyncWriteResult,
             body=_build_write_request(text, structured_mutations, extraction_logic, diff_engine, scope),
             timeout=timeout,
+            write=True,
         )
 
     async def write_status(self, write_id: str, *, timeout: float | None = None) -> WriteStatusResult:
@@ -565,7 +573,7 @@ class AsyncInstanceAPI:
         self,
         text: str,
         *,
-        extraction_logic: ExtractionLogic = ExtractionLogic.FAST,
+        extraction_logic: ExtractionLogic | None = None,
         timeout: float | None = None,
     ) -> ExtractResult:
         """Extract structured data from text without persisting it."""

@@ -6,7 +6,7 @@ from typing import Any, TypeVar
 import httpx
 from pydantic import BaseModel
 
-from xmemory._exceptions import XmemoryAPIError
+from xmemory._exceptions import WriteRejectedError, XmemoryAPIError
 from xmemory._models import _RawApiResponse
 from xmemory._version import CLIENT_HEADER, client_identity
 
@@ -40,6 +40,43 @@ def _structured_error(payload: Any) -> tuple[str | None, str | None, dict[str, A
             details if isinstance(details, dict) else None,
         )
     return None, None, None
+
+
+# The write calls (``write`` and ``write_async``, sync and async) say so with ``write``, never by their path, which an
+# instance id can end like: their ``VALIDATION_ERROR`` raises `WriteRejectedError`, and the response's ``warnings`` are
+# the write's. Not ``write_status``: it answers ``VALIDATION_ERROR`` for a malformed write id, and reports a failed write
+# in the status's ``error``.
+
+
+def _api_error(
+    message: str,
+    *,
+    write: bool,
+    status: int | None,
+    code: str | None,
+    details: dict[str, Any] | None,
+    retry_after: int | None,
+) -> XmemoryAPIError:
+    """The error to raise for a failed call: a `WriteRejectedError` for a ``write`` the server answered with
+    ``VALIDATION_ERROR``, carrying ``details["rejection"]`` when that is an object; an `XmemoryAPIError` otherwise."""
+    if code == "VALIDATION_ERROR" and write:
+        rejection = details.get("rejection") if details is not None else None
+        return WriteRejectedError(
+            message,
+            status=status,
+            code=code,
+            details=details,
+            retry_after=retry_after,
+            rejection=rejection if isinstance(rejection, dict) else None,
+        )
+    return XmemoryAPIError(message, status=status, code=code, details=details, retry_after=retry_after)
+
+
+def _with_envelope_warnings(api_resp: _RawApiResponse, item: Any) -> Any:
+    """``item`` with the response's ``warnings`` when the response carries some and the item none of its own."""
+    if api_resp.warnings and isinstance(item, dict) and "warnings" not in item:
+        return {**item, "warnings": api_resp.warnings}
+    return item
 
 
 def _raise_if_schema_error(payload: Any, resp: httpx.Response, path: str) -> None:
@@ -80,7 +117,7 @@ def _retry_after_seconds(resp: httpx.Response) -> int | None:
         return None
 
 
-def _error_from_response(resp: httpx.Response, path: str) -> XmemoryAPIError:
+def _error_from_response(resp: httpx.Response, path: str, *, write: bool) -> XmemoryAPIError:
     """Build a structured :class:`XmemoryAPIError` from an error response."""
     code: str | None = None
     message: str | None = None
@@ -97,8 +134,9 @@ def _error_from_response(resp: httpx.Response, path: str) -> XmemoryAPIError:
             msg = msg + " — " + detail
     else:
         msg = path + " failed: " + message
-    return XmemoryAPIError(
+    return _api_error(
         msg,
+        write=write,
         status=resp.status_code,
         code=code,
         details=details,
@@ -137,14 +175,15 @@ class SyncTransport:
             headers["Authorization"] = "Bearer " + self._api_key
         return headers
 
-    def _parse(self, resp: httpx.Response, path: str) -> _RawApiResponse:
+    def _parse(self, resp: httpx.Response, path: str, *, write: bool = False) -> _RawApiResponse:
         payload = resp.json() if resp.text else {}
         _raise_if_schema_error(payload, resp, path)
         parsed = _RawApiResponse.model_validate(payload)
         if parsed.errors:
             err = parsed.errors[0]
-            raise XmemoryAPIError(
+            raise _api_error(
                 path + " failed: " + err.message,
+                write=write,
                 status=resp.status_code,
                 code=err.code,
                 details=err.details,
@@ -160,6 +199,7 @@ class SyncTransport:
         body: BaseModel | None = None,
         params: dict[str, Any] | None = None,
         timeout: float | None = None,
+        write: bool = False,
     ) -> _RawApiResponse:
         t = timeout if timeout is not None else self.timeout
         try:
@@ -173,11 +213,11 @@ class SyncTransport:
                 timeout=t,
             )
             resp.raise_for_status()
-            return self._parse(resp, path)
+            return self._parse(resp, path, write=write)
         except XmemoryAPIError:
             raise
         except httpx.HTTPStatusError as e:
-            raise _error_from_response(e.response, path) from e
+            raise _error_from_response(e.response, path, write=write) from e
         except httpx.ConnectError as e:
             raise XmemoryAPIError("Connection error: " + str(e)) from e
         except Exception as e:
@@ -192,11 +232,13 @@ class SyncTransport:
         body: BaseModel | None = None,
         params: dict[str, Any] | None = None,
         timeout: float | None = None,
+        write: bool = False,
     ) -> _T:
-        api_resp = self.request(method, path, body=body, params=params, timeout=timeout)
+        api_resp = self.request(method, path, body=body, params=params, timeout=timeout, write=write)
         if not api_resp.items:
             raise XmemoryAPIError(path + " returned no items")
-        return response_type.model_validate(api_resp.items[0])
+        item = _with_envelope_warnings(api_resp, api_resp.items[0]) if write else api_resp.items[0]
+        return response_type.model_validate(item)
 
     def request_list(
         self,
@@ -242,14 +284,15 @@ class AsyncTransport:
             headers["Authorization"] = "Bearer " + self._api_key
         return headers
 
-    def _parse(self, resp: httpx.Response, path: str) -> _RawApiResponse:
+    def _parse(self, resp: httpx.Response, path: str, *, write: bool = False) -> _RawApiResponse:
         payload = resp.json() if resp.text else {}
         _raise_if_schema_error(payload, resp, path)
         parsed = _RawApiResponse.model_validate(payload)
         if parsed.errors:
             err = parsed.errors[0]
-            raise XmemoryAPIError(
+            raise _api_error(
                 path + " failed: " + err.message,
+                write=write,
                 status=resp.status_code,
                 code=err.code,
                 details=err.details,
@@ -265,6 +308,7 @@ class AsyncTransport:
         body: BaseModel | None = None,
         params: dict[str, Any] | None = None,
         timeout: float | None = None,
+        write: bool = False,
     ) -> _RawApiResponse:
         t = timeout if timeout is not None else self.timeout
         try:
@@ -278,11 +322,11 @@ class AsyncTransport:
                 timeout=t,
             )
             resp.raise_for_status()
-            return self._parse(resp, path)
+            return self._parse(resp, path, write=write)
         except XmemoryAPIError:
             raise
         except httpx.HTTPStatusError as e:
-            raise _error_from_response(e.response, path) from e
+            raise _error_from_response(e.response, path, write=write) from e
         except httpx.ConnectError as e:
             raise XmemoryAPIError("Connection error: " + str(e)) from e
         except Exception as e:
@@ -297,11 +341,13 @@ class AsyncTransport:
         body: BaseModel | None = None,
         params: dict[str, Any] | None = None,
         timeout: float | None = None,
+        write: bool = False,
     ) -> _T:
-        api_resp = await self.request(method, path, body=body, params=params, timeout=timeout)
+        api_resp = await self.request(method, path, body=body, params=params, timeout=timeout, write=write)
         if not api_resp.items:
             raise XmemoryAPIError(path + " returned no items")
-        return response_type.model_validate(api_resp.items[0])
+        item = _with_envelope_warnings(api_resp, api_resp.items[0]) if write else api_resp.items[0]
+        return response_type.model_validate(item)
 
     async def request_list(
         self,

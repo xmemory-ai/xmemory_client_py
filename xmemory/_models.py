@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import warnings
 from datetime import datetime
 from enum import Enum
 from typing import Any, Literal, Union
@@ -411,6 +413,8 @@ class WriteResult(BaseModel):
     # Omitted when there is none and by a server that predates it, so absence means none reported.
     # Absent (``None``) on responses from an older server.
     changes: Any = None
+    # The notes the server attached to the write, as it sent them; empty when it sent none.
+    warnings: list[Any] = Field(default_factory=list)
 
 
 class AsyncWriteResult(BaseModel):
@@ -419,6 +423,30 @@ class AsyncWriteResult(BaseModel):
     # recommends for writes — was the one with no way to point at what it did.
     trace_id: str | None = None
     console_url: str | None = None
+    # The notes the server attached to the write, as it sent them; empty when it sent none.
+    warnings: list[Any] = Field(default_factory=list)
+
+
+class WriteError(BaseModel):
+    """Why a write failed, as `write_status` reports it.
+
+    ``code`` and ``message`` are the failed write's; ``rejection`` holds the server's structured details when it sends
+    them, as a plain dict, and is ``None`` otherwise.
+    """
+
+    code: str | None = None
+    message: str | None = None
+    rejection: dict[str, Any] | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _rejection_from_details(cls, data: Any) -> Any:
+        # The server sends the details under ``details.rejection``.
+        if not isinstance(data, dict) or "rejection" in data:
+            return data
+        details = data.get("details")
+        rejection = details.get("rejection") if isinstance(details, dict) else None
+        return {**data, "rejection": rejection if isinstance(rejection, dict) else None}
 
 
 class WriteStatusResult(BaseModel):
@@ -426,12 +454,15 @@ class WriteStatusResult(BaseModel):
     write_status: WriteQueueStatus
     console_url: str | None = None
     error_detail: str | None = None
+    # Why the write failed, when it did; ``None`` otherwise.
+    error: WriteError | None = None
     completed_at: datetime | None = None
     # The same summary `WriteResult.changes` carries, for the write this id names, once it
     # completes; empty or absent (`None`) before that and on responses from an older server.
-    # The server has always sent it here — this client dropped it, so the one report only an
-    # async write can produce, a drop-mode write's ``skipped_out_of_scope``, was unreachable.
+    # The completed status carries the same summary, including ``skipped_out_of_scope``.
     changes: Any = None
+    # The notes the server attached to the write, as it sent them; empty when it sent none.
+    warnings: list[Any] = Field(default_factory=list)
 
 
 class ExtractResult(BaseModel):
@@ -969,16 +1000,20 @@ WriteMutation = ObjectMutation | RelationMutation
 
 class _WriteRequest(BaseModel):
     text: str = ""
-    extraction_logic: ExtractionLogic = ExtractionLogic.FAST
+    extraction_logic: ExtractionLogic | None = None
     use_diff_engine: bool | None = None
     structured_mutations: list[dict[str, Any]] | None = None
     scope: WriteScope | None = None
 
     @model_serializer(mode="wrap")
     def _omit_unset_optional_fields(self, handler: Any) -> dict[str, Any]:
-        # Omit these keys entirely when unset: older servers reject unknown
-        # request fields, so plain text writes must stay byte-identical.
+        # Omit these keys entirely when unset. ``extraction_logic`` is sent
+        # only when the caller gives one; ``structured_mutations`` and
+        # ``scope`` are left out of a body that does not use them, since
+        # older servers reject unknown request fields.
         data = handler(self)
+        if self.extraction_logic is None:
+            data.pop("extraction_logic", None)
         if self.structured_mutations is None:
             data.pop("structured_mutations", None)
         if self.scope is None:
@@ -988,7 +1023,15 @@ class _WriteRequest(BaseModel):
 
 class _ExtractRequest(BaseModel):
     text: str
-    extraction_logic: ExtractionLogic = ExtractionLogic.FAST
+    extraction_logic: ExtractionLogic | None = None
+
+    @model_serializer(mode="wrap")
+    def _omit_unset_extraction_logic(self, handler: Any) -> dict[str, Any]:
+        # Sent only when the caller gives one.
+        data = handler(self)
+        if self.extraction_logic is None:
+            data.pop("extraction_logic", None)
+        return data
 
 
 class _WriteStatusRequest(BaseModel):
@@ -1136,6 +1179,7 @@ class _RawApiResponse(BaseModel):
     ids: list[str] = []
     items: list[Any] = []
     errors: list[_ApiError] = []
+    warnings: list[Any] = []
 
 
 # ---------------------------------------------------------------------------
@@ -1143,7 +1187,64 @@ class _RawApiResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+_JSON_SCHEMA_DEPRECATED = "JSON Schema input is deprecated: send an XMD schema (SchemaType.YML) instead."
+
+
+# Keywords at the root of a JSON Schema, any of which marks a document as one, whatever else it holds: a JSON Schema
+# may use ``objects`` as an annotation of its own.
+_JSON_SCHEMA_ROOT_KEYWORDS = (
+    "$schema",
+    "$id",
+    "type",
+    "properties",
+    "$defs",
+    "definitions",
+    "allOf",
+    "anyOf",
+    "oneOf",
+    "not",
+    "$ref",
+    "if",
+    "then",
+    "else",
+)
+
+
+def _xmd_objects(objects: object) -> bool:
+    """Whether ``objects`` is shaped as XMD's object types: a mapping of mappings, at least one with ``fields``. One
+    is enough, so a schema with an object missing its ``fields`` reaches XMD's own error for that object."""
+    if not isinstance(objects, dict):
+        return False
+    types = list(objects.values())
+    return all(isinstance(type_, dict) for type_ in types) and any("fields" in type_ for type_ in types)
+
+
+def _xmd_json(schema_text: str) -> dict[str, Any] | None:
+    """``schema_text`` decoded, when it is an XMD schema written as JSON: a JSON object with a top-level
+    ``xmd_version``, or ``objects`` shaped as XMD's object types, and none of JSON Schema's root keywords. ``None``
+    otherwise, for a document nested too deeply to decode too."""
+    try:
+        parsed = json.loads(schema_text)
+    except (ValueError, RecursionError):
+        return None
+    if not isinstance(parsed, dict) or any(keyword in parsed for keyword in _JSON_SCHEMA_ROOT_KEYWORDS):
+        return None
+    if "xmd_version" in parsed or _xmd_objects(parsed.get("objects")):
+        return parsed
+    return None
+
+
 def build_instance_schema(schema_text: str, schema_type: SchemaType) -> _InstanceSchema:
+    """The schema payload for ``schema_text``.
+
+    YML text goes as XMD text. An XMD schema written as JSON goes as XMD too, as the decoded
+    mapping, so every value reaches the schema as JSON gave it. Any other text goes as JSON
+    Schema, which is deprecated.
+    """
     if schema_type == SchemaType.YML:
         return _InstanceSchema(yml=_SchemaPayload(value=schema_text))
+    xmd = _xmd_json(schema_text)
+    if xmd is not None:
+        return _InstanceSchema(yml=_SchemaPayload(value=xmd))
+    warnings.warn(_JSON_SCHEMA_DEPRECATED, DeprecationWarning, stacklevel=3)
     return _InstanceSchema(json_schema=_SchemaPayload(value=schema_text))

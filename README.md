@@ -622,17 +622,64 @@ Only records the write wrote are listed, and a field with a declared format is
 not. The key is omitted when there is none and by a server that predates the
 report. Treat `reason` as a plain string: a newer server may add one.
 
+#### A refused write
+
+A write the server answers with `VALIDATION_ERROR` raises `WriteRejectedError`
+from `write` and `write_async`, and from their async twins. It
+is a subclass of `XmemoryAPIError`, so `except XmemoryAPIError` still catches
+it. Its `rejection` holds the server's structured details of the refused write
+when the response carries them, as a plain dict, and is `None` otherwise:
+
+```python
+from xmemory import WriteRejectedError
+
+try:
+    inst.write("Order 17 is for twenty units.")
+except WriteRejectedError as error:
+    print(error.code, error)
+    if error.rejection is not None:
+        print(error.rejection)
+```
+
+#### Warnings on a write
+
+`write` and `write_async` results, and `write_status`, carry `warnings`: the
+notes the server attached to the write, each a dict with `code` and `message`
+as the server sent it. The list is empty when it sent none.
+
+A failed write's `write_status` carries `error`, a `WriteError`: its `code` and
+`message` are the failed write's, and its `rejection` holds the server's details
+when it sends them (`None` otherwise). `error` is `None` while the write has not
+failed, and can be `None` on a failed write the server stored no code for: read
+`error_detail` then, which is unchanged.
+
 #### Extraction logic
+
+`write`, `write_async` and `extract` send `extraction_logic` only when you pass
+one; by default they send none. Every text write uses deep extraction; one sent
+`ExtractionLogic.FAST` notes this in its `warnings`. A structured write does no
+extraction.
 
 ```python
 from xmemory import ExtractionLogic
 
-result = inst.write("...", extraction_logic=ExtractionLogic.FAST)
+result = inst.write("...", extraction_logic=ExtractionLogic.DEEP)
 ```
 
 ## Schema format
 
 Schemas use the XMD (Xmemory Data Model) format with `objects` and `relations`:
+YAML, or JSON with the same keys. Text passed as `SchemaType.JSON` is sent as
+XMD when its top level is a JSON object with an `xmd_version` key, or with
+`objects` whose values are mappings, at least one of them with `fields`, and
+with none of JSON Schema's root keywords (`$schema`, `$id`, `type`,
+`properties`, `$defs`, `definitions`, `allOf`, `anyOf`, `oneOf`, `not`, `$ref`,
+`if`, `then`, `else`); it is sent as the decoded mapping, so every value
+reaches the schema as JSON gave it. Text passed as `SchemaType.YML` is sent as
+it is, for the server to read as YAML, which refuses JSON indented with tabs:
+pass XMD written as JSON as `SchemaType.JSON`. Any other text passed as
+`SchemaType.JSON` is sent as JSON Schema, which is deprecated: the call emits a
+`DeprecationWarning`, and you should send an XMD schema instead.
 
 ```yaml
 objects:
