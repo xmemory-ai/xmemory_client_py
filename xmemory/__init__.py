@@ -1,4 +1,5 @@
 from xmemory._exceptions import (
+    WriteRejectedError,
     XmemoryAPIError,
     XmemoryHealthCheckError,
 )
@@ -57,6 +58,7 @@ from xmemory._models import (
     WriteMutation,
     WriteQueueStatus,
     WriteResult,
+    WriteError,
     WriteStatusResult,
 )
 from xmemory._schema_evolution import (
@@ -128,6 +130,7 @@ __all__ = [
     "BindingTier",
     "UNSET",
     "UnsetType",
+    "WriteRejectedError",
     "XmemoryAPIError",
     "XmemoryHealthCheckError",
     "ClusterInfo",
@@ -142,6 +145,7 @@ __all__ = [
     "RelatedTypesRelation",
     "WriteResult",
     "AsyncWriteResult",
+    "WriteError",
     "WriteStatusResult",
     # Structured write mutations
     "WriteMutation",

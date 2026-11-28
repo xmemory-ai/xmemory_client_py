@@ -719,7 +719,8 @@ def test_instance_write(httpx_mock, client):
     assert not hasattr(resp, "cleaned_objects")
     assert route.called
     assert b'"text":"Bob is an engineer."' in route.calls.last.request.content
-    assert b'"extraction_logic":"fast"' in route.calls.last.request.content
+    # Sent only when the caller gives one.
+    assert b'"extraction_logic"' not in route.calls.last.request.content
 
 
 def test_instance_write_async(httpx_mock, client):

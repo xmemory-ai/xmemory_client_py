@@ -2,6 +2,37 @@
 
 All notable changes to `xmemory-ai` are documented here.
 
+## 0.29.0
+
+Schema text sent as XMD when it is XMD, and typed write refusals.
+
+### Added
+
+- `WriteRejectedError`, a subclass of `XmemoryAPIError`, raised by `write` and
+  `write_async` (and their async twins) when the server answers with
+  `VALIDATION_ERROR`. Its `rejection` holds the server's
+  structured details of the refused write when the response carries them, as a
+  plain dict, and is `None` otherwise.
+- `warnings` on `WriteResult`, `AsyncWriteResult` and `WriteStatusResult`: the
+  notes the server attached to the write, empty when it sent none.
+- `WriteStatusResult.error`, a `WriteError`: a failed write's `code` and
+  `message`, and in `rejection` the server's details when it sends them.
+  `None` while the write has not failed; `error_detail` is unchanged.
+
+### Changed
+
+- An XMD schema written as JSON (a JSON object with a top-level `objects` key)
+  is sent as XMD by `create_instance`, `update_instance_schema` and
+  `dry_run_migration`, whichever `SchemaType` names it.
+- `write`, `write_async` and `extract` send `extraction_logic` only when you
+  pass one: its default is now `None`, where it sent `"fast"` before.
+
+### Deprecated
+
+- JSON Schema input: any other text passed as `SchemaType.JSON` is still sent as
+  JSON Schema, and the call emits a `DeprecationWarning`. Send an XMD schema
+  (`SchemaType.YML`) instead.
+
 ## 0.28.0
 
 Agent installation instructions, and the values a write could not store as given.

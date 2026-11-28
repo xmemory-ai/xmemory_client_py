@@ -37,6 +37,28 @@ class XmemoryAPIError(Exception):
         self.retry_after = retry_after
 
 
+class WriteRejectedError(XmemoryAPIError):
+    """Raised when the server answers a write with ``VALIDATION_ERROR``.
+
+    It is an :class:`XmemoryAPIError`, so code that catches that keeps catching
+    this. ``rejection`` holds the server's structured details of the refused
+    write when the response carries them, as a plain dict; ``None`` otherwise.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        status: int | None = None,
+        code: str | None = None,
+        details: dict[str, Any] | None = None,
+        retry_after: int | None = None,
+        rejection: dict[str, Any] | None = None,
+    ):
+        super().__init__(message, status=status, code=code, details=details, retry_after=retry_after)
+        self.rejection = rejection
+
+
 class XmemoryHealthCheckError(XmemoryAPIError):
     def __init__(self, message: str, *, status: int | None = None):
         super().__init__(message, status=status)
