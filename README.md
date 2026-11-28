@@ -674,9 +674,12 @@ XMD when its top level is a JSON object with an `xmd_version` key, or with
 `objects` whose values are mappings, at least one of them with `fields`, and
 with none of JSON Schema's root keywords (`$schema`, `$id`, `type`,
 `properties`, `$defs`, `definitions`, `allOf`, `anyOf`, `oneOf`, `not`, `$ref`,
-`if`, `then`, `else`). Any other text passed as `SchemaType.JSON` is sent as
-JSON Schema, which is deprecated: the call emits a `DeprecationWarning`, and you
-should send an XMD schema (`SchemaType.YML`) instead.
+`if`, `then`, `else`); it is sent as the decoded mapping, so every value
+reaches the schema as JSON gave it. Text passed as `SchemaType.YML` is sent as
+it is, for the server to read as YAML, which refuses JSON indented with tabs:
+pass XMD written as JSON as `SchemaType.JSON`. Any other text passed as
+`SchemaType.JSON` is sent as JSON Schema, which is deprecated: the call emits a
+`DeprecationWarning`, and you should send an XMD schema instead.
 
 ```yaml
 objects:

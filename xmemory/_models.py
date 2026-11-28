@@ -1007,8 +1007,10 @@ class _WriteRequest(BaseModel):
 
     @model_serializer(mode="wrap")
     def _omit_unset_optional_fields(self, handler: Any) -> dict[str, Any]:
-        # Omit these keys entirely when unset: older servers reject unknown
-        # request fields, so plain text writes must stay byte-identical.
+        # Omit these keys entirely when unset. ``extraction_logic`` is sent
+        # only when the caller gives one; ``structured_mutations`` and
+        # ``scope`` are left out of a body that does not use them, since
+        # older servers reject unknown request fields.
         data = handler(self)
         if self.extraction_logic is None:
             data.pop("extraction_logic", None)

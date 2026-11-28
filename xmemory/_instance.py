@@ -201,7 +201,7 @@ class InstanceAPI:
             "POST", f"/instances/{self._id}/write", WriteResult,
             body=_build_write_request(text, structured_mutations, extraction_logic, diff_engine, scope),
             timeout=timeout,
-            envelope_warnings=True,
+            write=True,
         )
 
     def write_async(
@@ -232,7 +232,7 @@ class InstanceAPI:
             "POST", f"/instances/{self._id}/write_async", AsyncWriteResult,
             body=_build_write_request(text, structured_mutations, extraction_logic, diff_engine, scope),
             timeout=timeout,
-            envelope_warnings=True,
+            write=True,
         )
 
     def write_status(self, write_id: str, *, timeout: float | None = None) -> WriteStatusResult:
@@ -522,7 +522,7 @@ class AsyncInstanceAPI:
             "POST", f"/instances/{self._id}/write", WriteResult,
             body=_build_write_request(text, structured_mutations, extraction_logic, diff_engine, scope),
             timeout=timeout,
-            envelope_warnings=True,
+            write=True,
         )
 
     async def write_async(
@@ -553,7 +553,7 @@ class AsyncInstanceAPI:
             "POST", f"/instances/{self._id}/write_async", AsyncWriteResult,
             body=_build_write_request(text, structured_mutations, extraction_logic, diff_engine, scope),
             timeout=timeout,
-            envelope_warnings=True,
+            write=True,
         )
 
     async def write_status(self, write_id: str, *, timeout: float | None = None) -> WriteStatusResult:

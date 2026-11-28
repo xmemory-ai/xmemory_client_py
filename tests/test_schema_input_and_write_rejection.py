@@ -103,8 +103,14 @@ def test_xmd_written_as_json_reaches_the_schema_with_every_value_as_json_gave_it
 
 
 XMD_OBJECTS = json.loads(XMD_AS_JSON)["objects"]
-# A JSON Schema's composition keywords, each beside object types shaped as XMD's: the keyword decides.
-COMPOSITION_KEYWORDS = {
+# Each of a JSON Schema's root keywords, alone beside object types shaped as XMD's: that keyword alone decides.
+ROOT_KEYWORDS = {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://example.com/gadget.schema.json",
+    "type": "object",
+    "properties": {"label": {"type": "string"}},
+    "$defs": {"gadget": {"type": "object"}},
+    "definitions": {"gadget": {"type": "object"}},
     "allOf": [{"type": "object"}],
     "anyOf": [{"type": "object"}],
     "oneOf": [{"type": "object"}],
@@ -122,12 +128,22 @@ COMPOSITION_KEYWORDS = {
         {"type": "object", "properties": {"label": {"type": "string"}}, "objects": "generator metadata"},
         {"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object", "objects": {}},
         {"$defs": {"label": {"type": "string"}}, "objects": {"source": "CRM"}},
-        *({keyword: value, "objects": XMD_OBJECTS} for keyword, value in COMPOSITION_KEYWORDS.items()),
+        *({keyword: value, "objects": XMD_OBJECTS} for keyword, value in ROOT_KEYWORDS.items()),
         {"objects": {"source": "CRM"}},
         {"objects": {"Gadget": {"label": "a mapping without fields"}}},
         {"objects": {}},
+        {"title": "Gadget", "description": "Neither objects nor a keyword."},
     ],
-    ids=["properties", "$schema", "$defs", *COMPOSITION_KEYWORDS, "objects not mappings", "no fields", "empty objects"],
+    ids=[
+        "properties and type",
+        "$schema and type",
+        "$defs",
+        *(f"{keyword} alone" for keyword in ROOT_KEYWORDS),
+        "objects not mappings",
+        "no fields",
+        "empty objects",
+        "no objects",
+    ],
 )
 def test_a_json_schema_using_objects_as_an_annotation_keeps_the_json_schema_route(api, client, document):
     text = json.dumps(document)
@@ -268,6 +284,28 @@ async def test_an_async_write_refused_raises_write_rejected_error(api, async_cli
     assert raised.value.rejection == REJECTION
 
 
+@pytest.mark.parametrize("status", [422, 200])
+def test_a_lookup_of_an_instance_whose_id_ends_like_a_write_raises_what_it_raised_before(api, client, status):
+    """A refusal is a write's by the call made, never by its path: ``GET /instances/write`` looks an instance up."""
+    api.get("/instances/write").mock(
+        return_value=httpx.Response(status, json=_error("VALIDATION_ERROR", "Invalid instance id: write"))
+    )
+    with pytest.raises(XmemoryAPIError) as raised:
+        client.admin.get_instance("write")
+    assert type(raised.value) is XmemoryAPIError and raised.value.code == "VALIDATION_ERROR"
+
+
+async def test_an_async_lookup_of_an_instance_whose_id_ends_like_a_write_raises_what_it_raised_before(
+    api, async_client
+):
+    api.get("/instances/write_async").mock(
+        return_value=httpx.Response(422, json=_error("VALIDATION_ERROR", "Invalid instance id: write_async"))
+    )
+    with pytest.raises(XmemoryAPIError) as raised:
+        await async_client.admin.get_instance("write_async")
+    assert type(raised.value) is XmemoryAPIError
+
+
 def test_a_write_failing_with_another_code_raises_what_it_raised_before(api, client):
     api.post(f"/instances/{INSTANCE_ID}/write").mock(
         return_value=httpx.Response(429, json=_error("QUOTA_EXCEEDED", "Daily quota exhausted."))
@@ -328,6 +366,14 @@ def test_write_status_carries_the_servers_warnings_or_none(api, client, sent):
     item = {"write_id": "w-1", "write_status": "completed", **({"warnings": sent} if sent is not None else {})}
     api.post(f"/instances/{INSTANCE_ID}/write_status").mock(return_value=httpx.Response(200, json=_ok([item])))
     assert client.instance(INSTANCE_ID).write_status("w-1").warnings == (sent or [])
+
+
+async def test_an_async_status_poll_leaves_the_responses_warnings_out_of_its_result(api, async_client):
+    """The response's warnings are a write's alone: a status poll's result carries the status's own, none here."""
+    item = {"write_id": "w-1", "write_status": "completed"}
+    body = {**_ok([item]), "warnings": NOTES}
+    api.post(f"/instances/{INSTANCE_ID}/write_status").mock(return_value=httpx.Response(200, json=body))
+    assert (await async_client.instance(INSTANCE_ID).write_status("w-1")).warnings == []
 
 
 # ---------------------------------------------------------------------------
