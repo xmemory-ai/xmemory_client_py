@@ -102,14 +102,32 @@ def test_xmd_written_as_json_reaches_the_schema_with_every_value_as_json_gave_it
     assert _sent_schema(route) == {"yml": {"value": schema}, "json_schema": None}
 
 
+XMD_OBJECTS = json.loads(XMD_AS_JSON)["objects"]
+# A JSON Schema's composition keywords, each beside object types shaped as XMD's: the keyword decides.
+COMPOSITION_KEYWORDS = {
+    "allOf": [{"type": "object"}],
+    "anyOf": [{"type": "object"}],
+    "oneOf": [{"type": "object"}],
+    "not": {"type": "array"},
+    "$ref": "#/$defs/gadget",
+    "if": {"required": ["label"]},
+    "then": {"required": ["label"]},
+    "else": {"required": ["label"]},
+}
+
+
 @pytest.mark.parametrize(
     "document",
     [
         {"type": "object", "properties": {"label": {"type": "string"}}, "objects": "generator metadata"},
         {"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object", "objects": {}},
         {"$defs": {"label": {"type": "string"}}, "objects": {"source": "CRM"}},
+        *({keyword: value, "objects": XMD_OBJECTS} for keyword, value in COMPOSITION_KEYWORDS.items()),
+        {"objects": {"source": "CRM"}},
+        {"objects": {"Gadget": {"label": "a mapping without fields"}}},
+        {"objects": {}},
     ],
-    ids=["properties", "$schema", "$defs"],
+    ids=["properties", "$schema", "$defs", *COMPOSITION_KEYWORDS, "objects not mappings", "no fields", "empty objects"],
 )
 def test_a_json_schema_using_objects_as_an_annotation_keeps_the_json_schema_route(api, client, document):
     text = json.dumps(document)
@@ -117,6 +135,24 @@ def test_a_json_schema_using_objects_as_an_annotation_keeps_the_json_schema_rout
     with pytest.warns(DeprecationWarning):
         client.admin.create_instance(CLUSTER_ID, "inst", text, SchemaType.JSON)
     assert _sent_schema(route) == {"yml": None, "json_schema": {"value": text}}
+
+
+@pytest.mark.parametrize(
+    "schema",
+    [
+        {"xmd_version": "v1", "objects": {}},
+        {"objects": {**XMD_OBJECTS, "Widget": {"description": "Its fields are still to come."}}},
+    ],
+    ids=["xmd_version", "one object without fields"],
+)
+def test_xmd_signed_by_its_version_or_one_object_with_fields_is_sent_as_xmd(api, client, schema):
+    """A document with ``xmd_version``, or one whose object types include one with ``fields``, is XMD: an object
+    still missing its ``fields`` gets XMD's own error for that object, not the JSON Schema converter's."""
+    route = _instance_created(api)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        client.admin.create_instance(CLUSTER_ID, "inst", json.dumps(schema), SchemaType.JSON)
+    assert _sent_schema(route) == {"yml": {"value": schema}, "json_schema": None}
 
 
 def test_json_nested_too_deeply_to_decode_keeps_the_json_schema_route(api, client):

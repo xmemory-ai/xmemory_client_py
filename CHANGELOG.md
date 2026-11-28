@@ -22,9 +22,11 @@ Schema text sent as XMD when it is XMD, and typed write refusals.
 
 ### Changed
 
-- An XMD schema written as JSON (a JSON object with a top-level `objects` key
-  and none of JSON Schema's root keywords: `$schema`, `$id`, `type`,
-  `properties`, `$defs`, `definitions`) passed as `SchemaType.JSON` is sent as
+- An XMD schema written as JSON (a JSON object with a top-level `xmd_version`
+  key, or with `objects` whose values are mappings, at least one of them with
+  `fields`, and with none of JSON Schema's root keywords: `$schema`, `$id`,
+  `type`, `properties`, `$defs`, `definitions`, `allOf`, `anyOf`, `oneOf`,
+  `not`, `$ref`, `if`, `then`, `else`) passed as `SchemaType.JSON` is sent as
   XMD by `create_instance`, `update_instance_schema` and `dry_run_migration`, as
   the decoded mapping, so every value reaches the schema as JSON gave it. Text
   passed as `SchemaType.YML` is sent as YML text, as before. A JSON document

@@ -1190,21 +1190,46 @@ _JSON_SCHEMA_DEPRECATED = "JSON Schema input is deprecated: send an XMD schema (
 
 # Keywords at the root of a JSON Schema, any of which marks a document as one, whatever else it holds: a JSON Schema
 # may use ``objects`` as an annotation of its own.
-_JSON_SCHEMA_ROOT_KEYWORDS = ("$schema", "$id", "type", "properties", "$defs", "definitions")
+_JSON_SCHEMA_ROOT_KEYWORDS = (
+    "$schema",
+    "$id",
+    "type",
+    "properties",
+    "$defs",
+    "definitions",
+    "allOf",
+    "anyOf",
+    "oneOf",
+    "not",
+    "$ref",
+    "if",
+    "then",
+    "else",
+)
+
+
+def _xmd_objects(objects: object) -> bool:
+    """Whether ``objects`` is shaped as XMD's object types: a mapping of mappings, at least one with ``fields``. One
+    is enough, so a schema with an object missing its ``fields`` reaches XMD's own error for that object."""
+    if not isinstance(objects, dict):
+        return False
+    types = list(objects.values())
+    return all(isinstance(type_, dict) for type_ in types) and any("fields" in type_ for type_ in types)
 
 
 def _xmd_json(schema_text: str) -> dict[str, Any] | None:
-    """``schema_text`` decoded, when it is an XMD schema written as JSON: a JSON object with a top-level ``objects``
-    key and none of JSON Schema's root keywords. ``None`` otherwise, for a document nested too deeply to decode too."""
+    """``schema_text`` decoded, when it is an XMD schema written as JSON: a JSON object with a top-level
+    ``xmd_version``, or ``objects`` shaped as XMD's object types, and none of JSON Schema's root keywords. ``None``
+    otherwise, for a document nested too deeply to decode too."""
     try:
         parsed = json.loads(schema_text)
     except (ValueError, RecursionError):
         return None
-    if not isinstance(parsed, dict) or "objects" not in parsed:
+    if not isinstance(parsed, dict) or any(keyword in parsed for keyword in _JSON_SCHEMA_ROOT_KEYWORDS):
         return None
-    if any(keyword in parsed for keyword in _JSON_SCHEMA_ROOT_KEYWORDS):
-        return None
-    return parsed
+    if "xmd_version" in parsed or _xmd_objects(parsed.get("objects")):
+        return parsed
+    return None
 
 
 def build_instance_schema(schema_text: str, schema_type: SchemaType) -> _InstanceSchema:
