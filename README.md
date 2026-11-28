@@ -650,13 +650,15 @@ as the server sent it. The list is empty when it sent none.
 A failed write's `write_status` carries `error`, a `WriteError`: its `code` and
 `message` are the failed write's, and its `rejection` holds the server's details
 when it sends them (`None` otherwise). `error` is `None` while the write has not
-failed. `error_detail` is unchanged.
+failed, and can be `None` on a failed write the server stored no code for: read
+`error_detail` then, which is unchanged.
 
 #### Extraction logic
 
 `write`, `write_async` and `extract` send `extraction_logic` only when you pass
-one; by default they send none. A write whose `extraction_logic` the server
-does not run says so in its `warnings`.
+one; by default they send none. Every text write uses deep extraction; one sent
+`ExtractionLogic.FAST` notes this in its `warnings`. A structured write does no
+extraction.
 
 ```python
 from xmemory import ExtractionLogic

@@ -17,13 +17,18 @@ Schema text sent as XMD when it is XMD, and typed write refusals.
   notes the server attached to the write, empty when it sent none.
 - `WriteStatusResult.error`, a `WriteError`: a failed write's `code` and
   `message`, and in `rejection` the server's details when it sends them.
-  `None` while the write has not failed; `error_detail` is unchanged.
+  `None` while the write has not failed, and can be `None` on a failed write
+  the server stored no code for; `error_detail` is unchanged.
 
 ### Changed
 
-- An XMD schema written as JSON (a JSON object with a top-level `objects` key)
-  is sent as XMD by `create_instance`, `update_instance_schema` and
-  `dry_run_migration`, whichever `SchemaType` names it.
+- An XMD schema written as JSON (a JSON object with a top-level `objects` key
+  and none of JSON Schema's root keywords: `$schema`, `$id`, `type`,
+  `properties`, `$defs`, `definitions`) passed as `SchemaType.JSON` is sent as
+  XMD by `create_instance`, `update_instance_schema` and `dry_run_migration`, as
+  the decoded mapping, so every value reaches the schema as JSON gave it. Text
+  passed as `SchemaType.YML` is sent as YML text, as before. A JSON document
+  nested too deeply to decode takes the JSON Schema route, as before.
 - `write`, `write_async` and `extract` send `extraction_logic` only when you
   pass one: its default is now `None`, where it sent `"fast"` before.
 

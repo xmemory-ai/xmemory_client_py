@@ -1,12 +1,11 @@
 """How schema text is sent, and what a refused write raises.
 
-An XMD schema written as JSON is sent as XMD whichever ``SchemaType`` names it; any other JSON text is sent as JSON
-Schema, with a ``DeprecationWarning``. A write the server answers with ``VALIDATION_ERROR`` raises
+An XMD schema written as JSON, passed as ``SchemaType.JSON``, is sent as XMD, as the decoded mapping; text passed as
+``SchemaType.YML`` is sent as it is; any other JSON text, a JSON Schema using ``objects`` as an annotation among it, is
+sent as JSON Schema, with a ``DeprecationWarning``. A write the server answers with ``VALIDATION_ERROR`` raises
 ``WriteRejectedError``, an ``XmemoryAPIError``, carrying the server's ``rejection`` when it sends one; every other
 failure raises what it raised before. Write results carry the server's ``warnings``, empty when it sends none.
 """
-
-from __future__ import annotations
 
 import json
 import uuid
@@ -78,13 +77,54 @@ def _instance_created(api: respx.MockRouter) -> respx.Route:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("schema_type", [SchemaType.JSON, SchemaType.YML])
-def test_an_xmd_schema_written_as_json_is_sent_as_xmd_without_a_warning(api, client, schema_type):
+def test_an_xmd_schema_written_as_json_is_sent_as_xmd_as_the_decoded_mapping_without_a_warning(api, client):
     route = _instance_created(api)
     with warnings.catch_warnings():
         warnings.simplefilter("error")
-        client.admin.create_instance(CLUSTER_ID, "inst", XMD_AS_JSON, schema_type)
+        client.admin.create_instance(CLUSTER_ID, "inst", XMD_AS_JSON, SchemaType.JSON)
+    assert _sent_schema(route) == {"yml": {"value": json.loads(XMD_AS_JSON)}, "json_schema": None}
+
+
+def test_text_named_yml_is_sent_as_yml_text_whatever_it_holds(api, client):
+    route = _instance_created(api)
+    client.admin.create_instance(CLUSTER_ID, "inst", XMD_AS_JSON, SchemaType.YML)
     assert _sent_schema(route) == {"yml": {"value": XMD_AS_JSON}, "json_schema": None}
+
+
+def test_xmd_written_as_json_reaches_the_schema_with_every_value_as_json_gave_it(api, client):
+    """A YAML reader refuses JSON's tab indentation and keeps an escaped emoji as two surrogates: the decoded mapping
+    carries both as JSON gave them."""
+    gadget = {"fields": {"label": {"type": "str", "default": "\U0001f527 spanner"}}, "primary_key": ["label"]}
+    schema = {"objects": {"Gadget": gadget}}
+    text = json.dumps(schema, indent="\t")
+    route = _instance_created(api)
+    client.admin.create_instance(CLUSTER_ID, "inst", text, SchemaType.JSON)
+    assert _sent_schema(route) == {"yml": {"value": schema}, "json_schema": None}
+
+
+@pytest.mark.parametrize(
+    "document",
+    [
+        {"type": "object", "properties": {"label": {"type": "string"}}, "objects": "generator metadata"},
+        {"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object", "objects": {}},
+        {"$defs": {"label": {"type": "string"}}, "objects": {"source": "CRM"}},
+    ],
+    ids=["properties", "$schema", "$defs"],
+)
+def test_a_json_schema_using_objects_as_an_annotation_keeps_the_json_schema_route(api, client, document):
+    text = json.dumps(document)
+    route = _instance_created(api)
+    with pytest.warns(DeprecationWarning):
+        client.admin.create_instance(CLUSTER_ID, "inst", text, SchemaType.JSON)
+    assert _sent_schema(route) == {"yml": None, "json_schema": {"value": text}}
+
+
+def test_json_nested_too_deeply_to_decode_keeps_the_json_schema_route(api, client):
+    text = '{"objects": {}, "examples": ' + "[" * 100_000 + "]" * 100_000 + "}"
+    route = _instance_created(api)
+    with pytest.warns(DeprecationWarning):
+        client.admin.create_instance(CLUSTER_ID, "inst", text, SchemaType.JSON)
+    assert _sent_schema(route) == {"yml": None, "json_schema": {"value": text}}
 
 
 def test_a_json_schema_is_still_sent_as_json_schema_and_warns_once(api, client):
@@ -119,14 +159,14 @@ def test_the_schema_update_and_its_dry_run_send_xmd_as_json_as_xmd(api, client):
     )
     client.admin.update_instance_schema(INSTANCE_ID, XMD_AS_JSON, SchemaType.JSON)
     client.admin.dry_run_migration(INSTANCE_ID, XMD_AS_JSON, SchemaType.JSON)
-    assert _sent_schema(updated) == {"yml": {"value": XMD_AS_JSON}, "json_schema": None}
-    assert _sent_schema(dry_run) == {"yml": {"value": XMD_AS_JSON}, "json_schema": None}
+    assert _sent_schema(updated) == {"yml": {"value": json.loads(XMD_AS_JSON)}, "json_schema": None}
+    assert _sent_schema(dry_run) == {"yml": {"value": json.loads(XMD_AS_JSON)}, "json_schema": None}
 
 
 async def test_the_async_create_sends_xmd_as_json_as_xmd(api, async_client):
     route = _instance_created(api)
     await async_client.admin.create_instance(CLUSTER_ID, "inst", XMD_AS_JSON, SchemaType.JSON)
-    assert _sent_schema(route) == {"yml": {"value": XMD_AS_JSON}, "json_schema": None}
+    assert _sent_schema(route) == {"yml": {"value": json.loads(XMD_AS_JSON)}, "json_schema": None}
 
 
 # ---------------------------------------------------------------------------
@@ -137,7 +177,10 @@ async def test_the_async_create_sends_xmd_as_json_as_xmd(api, async_client):
 @pytest.mark.parametrize("status", [400, 200])
 def test_a_write_refused_with_validation_error_raises_write_rejected_error_with_its_rejection(api, client, status):
     api.post(f"/instances/{INSTANCE_ID}/write").mock(
-        return_value=httpx.Response(status, json=_error("VALIDATION_ERROR", "An invented refusal.", details={"rejection": REJECTION}))
+        return_value=httpx.Response(
+            status,
+            json=_error("VALIDATION_ERROR", "An invented refusal.", details={"rejection": REJECTION}),
+        )
     )
     with pytest.raises(WriteRejectedError) as raised:
         client.instance(INSTANCE_ID).write("A teal gadget.")
@@ -167,19 +210,22 @@ def test_write_async_raises_write_rejected_error_too(api, client):
     assert raised.value.rejection == REJECTION
 
 
-def test_a_status_poll_for_an_unknown_write_id_raises_what_it_raised_before(api, client):
-    """write_status answers ``VALIDATION_ERROR`` for a write id it does not know: no write was refused."""
+def test_a_status_poll_for_a_malformed_write_id_raises_what_it_raised_before(api, client):
+    """write_status answers ``VALIDATION_ERROR`` for a malformed write id: no write was refused."""
     api.post(f"/instances/{INSTANCE_ID}/write_status").mock(
-        return_value=httpx.Response(400, json=_error("VALIDATION_ERROR", "Invalid write_id: w-unknown"))
+        return_value=httpx.Response(400, json=_error("VALIDATION_ERROR", "Invalid write_id: w-malformed"))
     )
     with pytest.raises(XmemoryAPIError) as raised:
-        client.instance(INSTANCE_ID).write_status("w-unknown")
+        client.instance(INSTANCE_ID).write_status("w-malformed")
     assert type(raised.value) is XmemoryAPIError and raised.value.code == "VALIDATION_ERROR"
 
 
-async def test_an_async_write_refused_raises_write_rejected_error(api, async_client):
+@pytest.mark.parametrize("status", [400, 200])
+async def test_an_async_write_refused_raises_write_rejected_error(api, async_client, status):
     api.post(f"/instances/{INSTANCE_ID}/write").mock(
-        return_value=httpx.Response(400, json=_error("VALIDATION_ERROR", "Refused.", details={"rejection": REJECTION}))
+        return_value=httpx.Response(
+            status, json=_error("VALIDATION_ERROR", "Refused.", details={"rejection": REJECTION})
+        )
     )
     with pytest.raises(WriteRejectedError) as raised:
         await async_client.instance(INSTANCE_ID).write("A teal gadget.")
@@ -221,10 +267,18 @@ def test_a_write_result_carries_the_responses_warnings_or_none(api, client, call
     assert result.warnings == (sent or [])
 
 
-async def test_an_async_clients_write_result_carries_the_responses_warnings(api, async_client):
+@pytest.mark.parametrize("call", ["write", "write_async"])
+async def test_an_async_clients_write_result_carries_the_responses_warnings(api, async_client, call):
     body = {**_ok([{"write_id": "w-1"}]), "warnings": NOTES}
+    api.post(f"/instances/{INSTANCE_ID}/{call}").mock(return_value=httpx.Response(200, json=body))
+    assert (await getattr(async_client.instance(INSTANCE_ID), call)("A teal gadget.")).warnings == NOTES
+
+
+def test_an_items_own_warnings_win_over_the_envelopes(api, client):
+    own = [{"code": "OWN", "message": "The item's own note."}]
+    body = {**_ok([{"write_id": "w-1", "warnings": own}]), "warnings": NOTES}
     api.post(f"/instances/{INSTANCE_ID}/write").mock(return_value=httpx.Response(200, json=body))
-    assert (await async_client.instance(INSTANCE_ID).write("A teal gadget.")).warnings == NOTES
+    assert client.instance(INSTANCE_ID).write("A teal gadget.").warnings == own
 
 
 def test_a_call_that_is_no_write_leaves_the_responses_warnings_out_of_its_result(api, client):
@@ -276,4 +330,15 @@ def test_a_text_call_sends_no_extraction_logic_unless_given_one(api, client, cal
     getattr(client.instance(INSTANCE_ID), call)("A teal gadget.")
     assert "extraction_logic" not in json.loads(route.calls.last.request.content)
     getattr(client.instance(INSTANCE_ID), call)("A teal gadget.", extraction_logic=ExtractionLogic.DEEP)
+    assert json.loads(route.calls.last.request.content)["extraction_logic"] == "deep"
+
+
+@pytest.mark.parametrize("call", ["write", "write_async", "extract"])
+async def test_an_async_text_call_sends_no_extraction_logic_unless_given_one(api, async_client, call):
+    route = api.post(f"/instances/{INSTANCE_ID}/{call}").mock(
+        return_value=httpx.Response(200, json=_ok([{"write_id": "w-1"}]))
+    )
+    await getattr(async_client.instance(INSTANCE_ID), call)("A teal gadget.")
+    assert "extraction_logic" not in json.loads(route.calls.last.request.content)
+    await getattr(async_client.instance(INSTANCE_ID), call)("A teal gadget.", extraction_logic=ExtractionLogic.DEEP)
     assert json.loads(route.calls.last.request.content)["extraction_logic"] == "deep"

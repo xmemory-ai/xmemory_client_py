@@ -153,7 +153,9 @@ class InstanceAPI:
         later mutations may reference objects created earlier in the batch, and
         a ``None`` value in a mutation's ``values`` clears that field.
 
-        ``extraction_logic`` only affects the ``text`` path, and is sent only when given.
+        ``extraction_logic`` only affects the ``text`` path, and is sent only when given. Every text write
+        uses deep extraction; one sent ``ExtractionLogic.FAST`` notes this in its ``warnings``. A structured
+        write does no extraction.
 
         A ``str`` field whose schema declares a ``merge`` takes a text write's
         value merged into the text already stored, instead of replacing it.
@@ -472,7 +474,9 @@ class AsyncInstanceAPI:
         later mutations may reference objects created earlier in the batch, and
         a ``None`` value in a mutation's ``values`` clears that field.
 
-        ``extraction_logic`` only affects the ``text`` path, and is sent only when given.
+        ``extraction_logic`` only affects the ``text`` path, and is sent only when given. Every text write
+        uses deep extraction; one sent ``ExtractionLogic.FAST`` notes this in its ``warnings``. A structured
+        write does no extraction.
 
         A ``str`` field whose schema declares a ``merge`` takes a text write's
         value merged into the text already stored, instead of replacing it.

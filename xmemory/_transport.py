@@ -43,7 +43,7 @@ def _structured_error(payload: Any) -> tuple[str | None, str | None, dict[str, A
 
 
 # The write calls, whose ``VALIDATION_ERROR`` raises `WriteRejectedError`. Not ``write_status``: it answers
-# ``VALIDATION_ERROR`` for a write id it does not know, and reports a failed write in the status's ``error``.
+# ``VALIDATION_ERROR`` for a malformed write id, and reports a failed write in the status's ``error``.
 _WRITE_PATH_SUFFIXES = ("/write", "/write_async")
 
 

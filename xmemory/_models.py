@@ -459,8 +459,7 @@ class WriteStatusResult(BaseModel):
     completed_at: datetime | None = None
     # The same summary `WriteResult.changes` carries, for the write this id names, once it
     # completes; empty or absent (`None`) before that and on responses from an older server.
-    # The server has always sent it here — this client dropped it, so the one report only an
-    # async write can produce, a drop-mode write's ``skipped_out_of_scope``, was unreachable.
+    # The completed status carries the same summary, including ``skipped_out_of_scope``.
     changes: Any = None
     # The notes the server attached to the write, as it sent them; empty when it sent none.
     warnings: list[Any] = Field(default_factory=list)
@@ -1189,22 +1188,36 @@ class _RawApiResponse(BaseModel):
 _JSON_SCHEMA_DEPRECATED = "JSON Schema input is deprecated: send an XMD schema (SchemaType.YML) instead."
 
 
-def _is_xmd_json(schema_text: str) -> bool:
-    """Whether ``schema_text`` is an XMD schema written as JSON: a JSON object with a top-level ``objects`` key."""
+# Keywords at the root of a JSON Schema, any of which marks a document as one, whatever else it holds: a JSON Schema
+# may use ``objects`` as an annotation of its own.
+_JSON_SCHEMA_ROOT_KEYWORDS = ("$schema", "$id", "type", "properties", "$defs", "definitions")
+
+
+def _xmd_json(schema_text: str) -> dict[str, Any] | None:
+    """``schema_text`` decoded, when it is an XMD schema written as JSON: a JSON object with a top-level ``objects``
+    key and none of JSON Schema's root keywords. ``None`` otherwise, for a document nested too deeply to decode too."""
     try:
         parsed = json.loads(schema_text)
-    except ValueError:
-        return False
-    return isinstance(parsed, dict) and "objects" in parsed
+    except (ValueError, RecursionError):
+        return None
+    if not isinstance(parsed, dict) or "objects" not in parsed:
+        return None
+    if any(keyword in parsed for keyword in _JSON_SCHEMA_ROOT_KEYWORDS):
+        return None
+    return parsed
 
 
 def build_instance_schema(schema_text: str, schema_type: SchemaType) -> _InstanceSchema:
     """The schema payload for ``schema_text``.
 
-    YML text, and an XMD schema written as JSON whichever ``schema_type`` names it (JSON is
-    valid YAML), go as XMD. Any other text goes as JSON Schema, which is deprecated.
+    YML text goes as XMD text. An XMD schema written as JSON goes as XMD too, as the decoded
+    mapping, so every value reaches the schema as JSON gave it. Any other text goes as JSON
+    Schema, which is deprecated.
     """
-    if schema_type == SchemaType.YML or _is_xmd_json(schema_text):
+    if schema_type == SchemaType.YML:
         return _InstanceSchema(yml=_SchemaPayload(value=schema_text))
+    xmd = _xmd_json(schema_text)
+    if xmd is not None:
+        return _InstanceSchema(yml=_SchemaPayload(value=xmd))
     warnings.warn(_JSON_SCHEMA_DEPRECATED, DeprecationWarning, stacklevel=3)
     return _InstanceSchema(json_schema=_SchemaPayload(value=schema_text))
